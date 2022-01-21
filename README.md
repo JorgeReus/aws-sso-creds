@@ -18,16 +18,16 @@
   <summary>Table of Contents</summary>
   <ol>
     <li>
-      <a href="#about-the-project">About The Project</a>
+      <a href="#about">About The Project</a>
       <ul>
         <li><a href="#built-with">Built With</a></li>
       </ul>
     </li>
     <li>
-      <a href="#getting-started">Getting Started</a>
+      <a href="#installation">Instalation</a>
       <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
+        <li><a href="#static-releases">Static</a></li>
+        <li><a href="#from-source">From source</a></li>
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
@@ -62,7 +62,7 @@ This section should list any major frameworks/libraries used to bootstrap your p
 
 ### Static Releases
 Download the binary based on your OS in [The releases section](https://github.com/JorgeReus/aws-sso-creds/releases)
-### Build it from source
+### From source
 #### Prerequisites
 - Go 1.17+
 Run `go install github.com/JorgeReus/aws-sso-creds@latest`
