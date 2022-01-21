@@ -1,0 +1,19 @@
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - main: ./cmd/aws-sso-creds
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+archives:
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      amd64: x86_64
