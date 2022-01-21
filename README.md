@@ -2,12 +2,12 @@
 
 <div id="top"></div>
 <!-- PROJECT LOGO -->
-<img src="./.md/aws-sso-creds.gif" width="50" height="50" />
 <br />
 <div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="./.md/gopher.png" alt="Logo" width="80" height="80">
-  </a>
+
+  <img src="./.md/aws-sso-creds.gif" />
+  <br>
+  <img src="./.md/gopher.png" alt="Logo" width="80" height="80">
 
   <h3 align="center">AWS SSO Creds</h3>
 </div>
