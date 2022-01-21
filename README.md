@@ -65,7 +65,9 @@ Download the binary based on your OS in [The releases section](https://github.co
 ### From source
 #### Prerequisites
 - Go 1.17+
-Run `go install github.com/JorgeReus/aws-sso-creds@latest`
+
+
+Run `go install github.com/JorgeReus/aws-sso-creds/cmd/aws-sso-creds@latest`
 
 
 <!-- USAGE EXAMPLES -->
