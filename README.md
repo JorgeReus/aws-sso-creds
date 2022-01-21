@@ -2,7 +2,7 @@
 
 <div id="top"></div>
 <!-- PROJECT LOGO -->
-![animation](./.md/aws-sso-creds.gif)
+<img src="./.md/aws-sso-creds.gif" width="50" height="50" />
 <br />
 <div align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
