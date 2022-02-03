@@ -273,7 +273,7 @@ func (s *SSOFlow) GetCredentials() ([]CredentialsResult, error) {
 			})
 			continue
 		}
-		profName := tempCredsPrefix + strings.Split(item.roleName, " ")[1]
+		profName := tempCredsPrefix + strings.TrimPrefix(item.roleName, "profile ")
 		credsSection, err := creds.File.NewSection(profName)
 		if err != nil {
 			return nil, item.err
