@@ -21,6 +21,8 @@ require (
 	gopkg.in/ini.v1 v1.62.0
 )
 
+require github.com/deckarep/golang-set v1.8.0
+
 require (
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/gdamore/tcell/v2 v2.4.0 // indirect

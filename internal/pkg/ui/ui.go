@@ -79,14 +79,23 @@ func (u *UI) Start() error {
 	}
 
 	if u.UsePreviewer {
-		selectedEntry := fuzzyPreviewer(credentialsPath, configFilePath)
-		fmt.Println(selectedEntry)
+		fp, err := NewFuzzyPreviewer(credentialsPath, configFilePath)
+		if err != nil {
+			fmt.Println(fmt.Sprintf("Error starting program: %s", err))
+			os.Exit(1)
+		}
+		selectedEntry, err := fp.Preview()
+		if err != nil {
+			fmt.Println(fmt.Sprintf("Error Selecting entry: %s", err))
+			os.Exit(1)
+		}
+		fmt.Println(*selectedEntry)
 	} else {
 		m := initialModel()
 		p := tea.NewProgram(m)
 		go u.handleFlow()
 		if err := p.Start(); err != nil {
-			fmt.Printf("Error starting program: %s\n", err)
+			fmt.Println(fmt.Sprintf("Error starting program: %s", err))
 			os.Exit(1)
 		}
 	}

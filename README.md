@@ -7,6 +7,8 @@
 
   <img src="./.md/aws-sso-creds.gif" />
   <br>
+  <img src="./.md/previewer.gif" />
+  <br>
   <img src="./.md/gopher.png" alt="Logo" width="80" height="80">
 
   <h3 align="center">AWS SSO Creds</h3>
