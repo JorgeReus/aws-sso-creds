@@ -54,8 +54,6 @@ Use it to **easily** manage entries in `~/.aws/config` & `~/.aws/credentials` fi
 
 ### Built With
 
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-
 * [Bubbletea](https://github.com/charmbracelet/bubbletea)
 * [Go-fuzzyfinder](https://github.com/ktr0731/go-fuzzyfinder)
 
