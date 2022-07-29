@@ -3,6 +3,8 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"log"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,14 +27,8 @@ type FuzzyPreviewer struct {
 }
 
 func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewer, error) {
-	creds, err := configparser.NewConfigParserFromFile(credentialsPath)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Cannot parse file %s: %v", credentialsPath, err))
-	}
-	roles, err := configparser.NewConfigParserFromFile(rolesPath)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Cannot parse file %s: %v", rolesPath, err))
-	}
+	var err error
+	var creds, roles *configparser.ConfigParser
 
 	rolesMapping := map[string]string{}
 
@@ -40,59 +36,77 @@ func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewe
 	extraSections := mapset.NewSet()
 	entries := configparser.New()
 
-	// Go though the sections of the credentials file (~/.aws/credentials)
-	for _, sec := range creds.Sections() {
-		err := entries.AddSection(sec)
+	if _, err = os.Stat(credentialsPath); err == nil {
+		creds, err = configparser.NewConfigParserFromFile(credentialsPath)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Cannot add section %s: %v", sec, err))
-		}
-		extraSections.Add(sec)
-		items, err := creds.Items(sec)
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Cannot get the %s entries from the credentials file (~/.aws/credentials): %v", sec, err))
+			return nil, errors.New(fmt.Sprintf("Cannot parse file %s: %v", credentialsPath, err))
 		}
 
-		rolesMapping[sec] = sec
-		for k, v := range items {
-			entries.Set(sec, k, v)
+		// Go though the sections of the credentials file (~/.aws/credentials)
+		for _, sec := range creds.Sections() {
+			err := entries.AddSection(sec)
+			if err != nil {
+				return nil, errors.New(fmt.Sprintf("Cannot add section %s: %v", sec, err))
+			}
+			extraSections.Add(sec)
+			items, err := creds.Items(sec)
+			if err != nil {
+				return nil, errors.New(fmt.Sprintf("Cannot get the %s entries from the credentials file (~/.aws/credentials): %v", sec, err))
+			}
+
+			rolesMapping[sec] = sec
+			for k, v := range items {
+				entries.Set(sec, k, v)
+			}
 		}
 	}
 
 	var outputName string
 	var extraItems configparser.Dict
-
-	// Go though the sections of the config file (~/.aws/config)
-	for _, sec := range roles.Sections() {
-		profileName := strings.TrimPrefix(sec, "profile ")
-		_, err := roles.GetBool(sec, "sso_auto_populated")
-		// If is not autopopulated
+	if _, err = os.Stat(rolesPath); err == nil {
+		roles, err = configparser.NewConfigParserFromFile(rolesPath)
 		if err != nil {
-			if entries.HasSection(profileName) {
-				extraItems, _ = entries.Items(profileName)
-				err = entries.RemoveSection(profileName)
-				if err != nil {
-					return nil, errors.New(fmt.Sprintf("Cannot erase section %s from configFile: %v", profileName, err))
+			return nil, errors.New(fmt.Sprintf("Cannot parse file %s: %v", rolesPath, err))
+		}
+
+		// Go though the sections of the config file (~/.aws/config)
+		for _, sec := range roles.Sections() {
+			profileName := strings.TrimPrefix(sec, "profile ")
+			_, err := roles.GetBool(sec, "sso_auto_populated")
+			// If is not autopopulated
+			if err != nil {
+				if entries.HasSection(profileName) {
+					extraItems, _ = entries.Items(profileName)
+					err = entries.RemoveSection(profileName)
+					if err != nil {
+						return nil, errors.New(fmt.Sprintf("Cannot erase section %s from configFile: %v", profileName, err))
+					}
+					extraSections.Remove(profileName)
 				}
-				extraSections.Remove(profileName)
+				outputName = fmt.Sprintf("(profile) %s", profileName)
+			} else {
+				outputName = fmt.Sprintf("(SSO profile) %s", profileName)
 			}
-			outputName = fmt.Sprintf("(profile) %s", profileName)
-		} else {
-			outputName = fmt.Sprintf("(SSO profile) %s", profileName)
+
+			rolesMapping[outputName] = sec
+
+			outputSections = append(outputSections, outputName)
+			entries.AddSection(sec)
+
+			items, _ := roles.Items(sec)
+			for k, v := range items {
+				entries.Set(sec, k, v)
+			}
+
+			for k, v := range extraItems {
+				entries.Set(sec, k, v)
+			}
 		}
 
-		rolesMapping[outputName] = sec
+	}
 
-		outputSections = append(outputSections, outputName)
-		entries.AddSection(sec)
-
-		items, _ := roles.Items(sec)
-		for k, v := range items {
-			entries.Set(sec, k, v)
-		}
-
-		for k, v := range extraItems {
-			entries.Set(sec, k, v)
-		}
+	if roles == nil && creds == nil {
+		log.Fatalf("Neither %s nor %s exist, nothing to do", credentialsPath, rolesPath)
 	}
 
 	for sec := range extraSections.Iter() {
