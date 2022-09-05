@@ -77,6 +77,8 @@ Run `go install github.com/JorgeReus/aws-sso-creds/cmd/aws-sso-creds@latest`
 Usage: aws-sso-creds [-fhpst] [-r value] [-u value] [parameters ...]
  -f, --forceAuth    Force Authentication with AWS SSO
  -h, --help         Help
+     --noBrowser
+                    Do not open in the browser automatically
  -p, --populateRoles
                     Populate AWS SSO roles in ~/.aws/config
  -r, --SSORegion=value
