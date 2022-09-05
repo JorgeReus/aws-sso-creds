@@ -22,7 +22,7 @@ type UI struct {
 	SsoURL        string
 	SsoRegion     string
 	ForceLogin    bool
-	NoInteractive bool
+	NoBrowser     bool
 	UsePreviewer  bool
 }
 
@@ -166,7 +166,7 @@ func (u *UI) handleFlow() {
 	displayMsg = te.String("Logging in into AWS SSO").Foreground(informationColor).String()
 	var err error
 	go channelSubscriber()
-	flow, err = sso.Login(u.SsoURL, u.SsoRegion, u.ForceLogin, u.NoInteractive, msgBus)
+	flow, err = sso.Login(u.SsoURL, u.SsoRegion, u.ForceLogin, u.NoBrowser, msgBus)
 	if err != nil {
 		hasFinished = true
 		printErr(err)

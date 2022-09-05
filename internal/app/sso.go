@@ -22,7 +22,7 @@ const (
 	tempCredsPrefix = "tmp:"
 )
 
-func Login(url string, region string, forceLogin, noInteractive bool, msgBus *bus.Bus) (*SSOFlow, error) {
+func Login(url string, region string, forceLogin, noBrowser bool, msgBus *bus.Bus) (*SSOFlow, error) {
 	session := session.Must(session.NewSession())
 	ssoClient := ssooidc.New(session, aws.NewConfig().WithRegion(region))
 	clientCredentials, err := cache.GetSSOClientCreds(region)
@@ -67,11 +67,11 @@ func Login(url string, region string, forceLogin, noInteractive bool, msgBus *bu
 			return nil, err
 		}
 
-		if !noInteractive {
+		if !noBrowser {
 			err = browser.OpenURL(*response.VerificationUriComplete)
 		}
 
-		if err != nil || noInteractive  {
+		if err != nil || noBrowser  {
 			s := fmt.Sprintf("Can't open your browser, open this URL mannually: %s", *response.VerificationUriComplete)
 			msgBus.Send(bus.BusMsg{
 				MsgType:  bus.MSG_TYPE_ERR,

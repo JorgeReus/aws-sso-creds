@@ -19,7 +19,7 @@ var (
 	ssoURL                  = getopt.StringLong("SSOUrl", 'u', "", "The SSO URL(https://<my-domain>.awsapps.com/start) the AWS_SSO_START_URL env var has precedence over this flag")
 	ssoRegion               = getopt.StringLong("SSORegion", 'r', "", "The AWS SSO region, the AWS_SSO_REGION env var has precedence over this flag")
 	forceLogin              = getopt.BoolLong("forceAuth", 'f', "Force Authentication with AWS SSO")
-	noInteractive           = getopt.BoolLong("noInteractive", 0, "Do not open in the browser automatically")
+	noBrowser               = getopt.BoolLong("noBrowser", 0, "Do not open in the browser automatically")
 	optHelp                 = getopt.BoolLong("help", 'h', "Help")
 	fuzzyFinderPreviewer    = getopt.BoolLong("selectFuzzy", 's', "Select your role/credentials in a fuzzy-finder previewer")
 )
@@ -53,7 +53,7 @@ func main() {
 		SsoURL:        *ssoURL,
 		SsoRegion:     *ssoRegion,
 		ForceLogin:    *forceLogin,
-		NoInteractive: *noInteractive,
+		NoBrowser:     *noBrowser,
 		UsePreviewer:  *fuzzyFinderPreviewer,
 	}
 
