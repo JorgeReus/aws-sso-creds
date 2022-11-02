@@ -97,7 +97,12 @@ func (c *SSOToken) Save(url string) error {
 	return nil
 }
 
-func GetSSOToken(url string, sess *session.Session, oidcClient *ssooidc.SSOOIDC, region string) (*SSOToken, error) {
+func GetSSOToken(
+	url string,
+	sess *session.Session,
+	oidcClient *ssooidc.SSOOIDC,
+	region string,
+) (*SSOToken, error) {
 	var result SSOToken
 	h := sha1.New()
 	h.Write([]byte(url))

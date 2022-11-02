@@ -12,6 +12,8 @@ type SSOFlow struct {
 	ssoClient       *sso.SSO
 	ssoRegion       *string
 	ssoStartUrl     *string
+	orgName         string
+	prefix          string
 }
 
 type AccountRolesOutput struct {

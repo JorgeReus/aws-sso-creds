@@ -5,16 +5,10 @@ import (
 	"os"
 	"path"
 
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/util"
-
 	"gopkg.in/ini.v1"
 )
 
-func NewConfigFile() (*AWSFile, error) {
-	homedir, err := util.HomeDir()
-	if err != nil {
-		return nil, err
-	}
+func NewConfigFile(homedir string) (*AWSFile, error) {
 	path := path.Join(homedir, ".aws", "config")
 	f, err := os.OpenFile(path, os.O_CREATE, 0644)
 	f.Close()
@@ -28,20 +22,20 @@ func NewConfigFile() (*AWSFile, error) {
 	}, nil
 }
 
-func ConfigFileSSOEmpty() bool {
-	homedir, err := util.HomeDir()
-	if err != nil {
-		return true
-	}
+func ConfigFileSSOEmpty(homedir string, organization string) bool {
 	path := path.Join(homedir, ".aws", "config")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return true
 	}
 
 	file, err := ini.Load(path)
+	if err != nil {
+		return true
+	}
 	isFresh := true
 	for _, section := range file.Sections() {
-		if section.HasKey("sso_auto_populated") {
+
+		if IsValidEntry(section, organization) {
 			isFresh = false
 			break
 		}
@@ -49,11 +43,19 @@ func ConfigFileSSOEmpty() bool {
 	return isFresh
 }
 
-func NewCredentialsFile() (*AWSFile, error) {
-	homedir, err := util.HomeDir()
+func IsValidEntry(s *ini.Section, organization string) bool {
+	org, err := s.GetKey("org")
 	if err != nil {
-		return nil, err
+		return false
 	}
+	if s.HasKey("sso_auto_populated") && org.String() == organization {
+		return true
+	}
+
+	return false
+}
+
+func NewCredentialsFile(homedir string) (*AWSFile, error) {
 	path := path.Join(homedir, ".aws", "credentials")
 	f, err := os.OpenFile(path, os.O_CREATE, 0644)
 	f.Close()
@@ -71,9 +73,9 @@ func (f *AWSFile) Save() error {
 	return f.File.SaveTo(f.Path)
 }
 
-func (c *AWSFile) CleanTemporaryRoles() {
+func (c *AWSFile) CleanTemporaryRoles(organization string) {
 	for _, section := range c.File.Sections() {
-		if section.HasKey("sso_auto_populated") {
+		if IsValidEntry(section, organization) {
 			c.File.DeleteSection(section.Name())
 		}
 	}
