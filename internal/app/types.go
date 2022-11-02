@@ -12,6 +12,8 @@ type SSOFlow struct {
 	ssoClient       *sso.SSO
 	ssoRegion       *string
 	ssoStartUrl     *string
+	orgName         string
+	prefix          string
 }
 
 type AccountRolesOutput struct {
@@ -31,6 +33,26 @@ type RoleCredentialsOutput struct {
 	err      error
 }
 
-var clientName = "sso-oidc"
-var clientType = "public"
-var grantType = "urn:ietf:params:oauth:grant-type:device_code"
+type SessionUrlParams struct {
+	AccessKeyId     string `json:"sessionId"`
+	SecretAccessKey string `json:"sessionKey"`
+	SessionToken    string `json:"sessionToken"`
+}
+
+type LoginResponse struct {
+	SigninToken string `json:"SigninToken"`
+}
+
+type LoginUrlParams struct {
+	Issuer      string
+	Destination string
+	SigninToken string
+}
+
+const AWS_FEDERATED_URL = "https://signin.aws.amazon.com/federation"
+
+var (
+	clientName = "sso-oidc"
+	clientType = "public"
+	grantType  = "urn:ietf:params:oauth:grant-type:device_code"
+)
