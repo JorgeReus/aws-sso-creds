@@ -11,6 +11,7 @@ import (
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/util"
 
+	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	te "github.com/muesli/termenv"
@@ -19,24 +20,23 @@ import (
 type UI struct {
 	CreateStatic  bool
 	PopulateRoles bool
-	SsoURL        string
-	SsoRegion     string
 	ForceLogin    bool
 	NoBrowser     bool
-	UsePreviewer  bool
+	Org           config.Organization
 }
 
 var (
+	c                 config.Config
+	errorColor        te.Color
+	informationColor  te.Color
+	warningColor      te.Color
+	focusColor        te.Color
+	spinnerColor      te.Color
 	flow              *sso.SSOFlow
 	hasFinished       bool
 	needsUserApproval = false
 	displayMsg        string
 	color             = te.ColorProfile().Color
-	errorColor        = color("9")
-	informationColor  = color("20")
-	warningColor      = color("22")
-	focusColor        = color("10")
-	spinnerColor      = color("205")
 	msgBus            = bus.NewBus()
 )
 
@@ -59,6 +59,12 @@ func initialModel() model {
 }
 
 func (u *UI) Start() error {
+	c := config.GetInstance()
+	errorColor = color(c.ErrorColor)
+	informationColor = color(c.InformationColor)
+	warningColor = color(c.WarningColor)
+	focusColor = color(c.FocusColor)
+	spinnerColor = color(c.SpinnerColor)
 
 	user, err := user.Current()
 	if err != nil {
@@ -66,8 +72,9 @@ func (u *UI) Start() error {
 		os.Exit(1)
 	}
 
-	credentialsPath := fmt.Sprintf("%s/.aws/credentials", user.HomeDir)
-	configFilePath := fmt.Sprintf("%s/.aws/config", user.HomeDir)
+	home := config.GetInstance().Home
+	credentialsPath := fmt.Sprintf("%s/.aws/credentials", home)
+	configFilePath := fmt.Sprintf("%s/.aws/config", home)
 
 	// Validate if the credentials file is owned by root
 	if u.CreateStatic {
@@ -79,26 +86,12 @@ func (u *UI) Start() error {
 		util.ValidateSuperuserFile(configFilePath, user)
 	}
 
-	if u.UsePreviewer {
-		fp, err := NewFuzzyPreviewer(credentialsPath, configFilePath)
-		if err != nil {
-			fmt.Println(fmt.Sprintf("Error starting program: %s", err))
-			os.Exit(1)
-		}
-		selectedEntry, err := fp.Preview()
-		if err != nil {
-			fmt.Println(fmt.Sprintf("Error Selecting entry: %s", err))
-			os.Exit(1)
-		}
-		fmt.Println(*selectedEntry)
-	} else {
-		m := initialModel()
-		p := tea.NewProgram(m)
-		go u.handleFlow()
-		if err := p.Start(); err != nil {
-			fmt.Println(fmt.Sprintf("Error starting program: %s", err))
-			os.Exit(1)
-		}
+	m := initialModel()
+	p := tea.NewProgram(m)
+	go u.handleFlow()
+	if err := p.Start(); err != nil {
+		fmt.Println(fmt.Sprintf("Error starting program: %s", err))
+		os.Exit(1)
 	}
 	return nil
 }
@@ -152,7 +145,9 @@ func channelSubscriber() {
 			break
 		case bus.MSG_TYPE_ERR:
 			printWarning(msg.Contents)
-			displayMsg = te.String("Continue in your browser and press ENTER").Foreground(informationColor).String()
+			displayMsg = te.String("Continue in your browser and press ENTER").
+				Foreground(informationColor).
+				String()
 			needsUserApproval = true
 			break
 		default:
@@ -163,17 +158,24 @@ func channelSubscriber() {
 }
 
 func (u *UI) handleFlow() {
-	displayMsg = te.String("Logging in into AWS SSO").Foreground(informationColor).String()
+	displayMsg = te.String(fmt.Sprintf("Logging in into AWS SSO org: %s", u.Org.Name)).
+		Foreground(informationColor).
+		String()
 	var err error
 	go channelSubscriber()
-	flow, err = sso.Login(u.SsoURL, u.SsoRegion, u.ForceLogin, u.NoBrowser, msgBus)
+	flow, err = sso.Login(
+		u.Org,
+		u.ForceLogin,
+		u.NoBrowser,
+		msgBus,
+	)
 	if err != nil {
 		hasFinished = true
 		printErr(err)
 		return
 	}
 
-	isNewRun := files.ConfigFileSSOEmpty()
+	isNewRun := files.ConfigFileSSOEmpty(config.GetInstance().Home, u.Org.Name)
 
 	if u.PopulateRoles || isNewRun {
 		displayMsg = "Updating roles"
@@ -205,7 +207,11 @@ func (u *UI) handleFlow() {
 		fmt.Println("Added temporary credentials in ~/.aws/credentials")
 		for _, role := range roles {
 			if role.WasSuccesful {
-				s := fmt.Sprintf("  %s, will expire at %s", te.String(role.ProfileName).Foreground(focusColor).String(), te.String(role.ExpiresAt).Foreground(focusColor).String())
+				s := fmt.Sprintf(
+					"  %s, will expire at %s",
+					te.String(role.ProfileName).Foreground(focusColor).String(),
+					te.String(role.ExpiresAt).Foreground(focusColor).String(),
+				)
 				fmt.Println(s)
 			} else {
 				s := fmt.Sprintf("Entry error %s in ~/.aws/config, try to update your roles with -r", te.String(role.ProfileName).Foreground(errorColor).String())
