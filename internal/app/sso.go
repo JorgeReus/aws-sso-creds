@@ -72,6 +72,11 @@ func Login(
 			return nil, err
 		}
 
+		msgBus.Send(bus.BusMsg{
+			MsgType:  bus.MSG_TYPE_INFO,
+			Contents: fmt.Sprintln(fmt.Sprintf("The code received is %s, please verify accordingly", *response.UserCode)),
+		})
+
 		if !noBrowser {
 			err = browser.OpenURL(*response.VerificationUriComplete)
 		}
@@ -342,14 +347,14 @@ func (s *SSOFlow) GetCredsByRoleName(roleName string, accountId string) (*sso.Ge
 	var result RoleCredentialsOutput
 	result.roleName = roleName
 	credsOutput, err := s.ssoClient.GetRoleCredentials(&sso.GetRoleCredentialsInput{
-    AccessToken: s.accessToken,
-    AccountId: &accountId,
-    RoleName: &roleName,
-  })
+		AccessToken: s.accessToken,
+		AccountId:   &accountId,
+		RoleName:    &roleName,
+	})
 	if err != nil {
-    return nil, err
+		return nil, err
 	}
-  return credsOutput, nil
+	return credsOutput, nil
 }
 
 func GetCachedSSOFlow(org config.Organization) (*SSOFlow, error) {
