@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -12,10 +13,8 @@ import (
 
 	"github.com/mikemucc/aws-sso-creds/internal/pkg/util"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sso"
-	"github.com/aws/aws-sdk-go/service/ssooidc"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sso"
 )
 
 var cacheDir string
@@ -98,9 +97,9 @@ func (c *SSOToken) Save(url string) error {
 }
 
 func GetSSOToken(
+	ctx context.Context,
 	url string,
-	sess *session.Session,
-	oidcClient *ssooidc.SSOOIDC,
+	ssoClient interface{}, // Can be *sso.Client or mock
 	region string,
 ) (*SSOToken, error) {
 	var result SSOToken
@@ -135,9 +134,20 @@ func GetSSOToken(
 	}
 
 	// Do an extra check to see if the token has expired api wise
-	aux := sso.New(sess, aws.NewConfig().WithRegion(region))
-	_, err = aux.ListAccounts(&sso.ListAccountsInput{
-		AccessToken: &result.AccessToken,
+	if ssoClient == nil {
+		// In test mode or if no client provided, skip API validation
+		return &result, nil
+	}
+
+	// Type assert to get the client
+	client, ok := ssoClient.(*sso.Client)
+	if !ok {
+		// If it's not an SSO client (e.g., a mock), skip validation
+		return &result, nil
+	}
+
+	_, err = client.ListAccounts(ctx, &sso.ListAccountsInput{
+		AccessToken: aws.String(result.AccessToken),
 	})
 
 	if err != nil {

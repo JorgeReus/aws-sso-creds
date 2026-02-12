@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/aws/aws-sdk-go/service/sso"
+	"github.com/aws/aws-sdk-go-v2/service/sso"
 	"github.com/mikemucc/aws-sso-creds/internal/pkg/files"
 )
 
@@ -9,7 +9,7 @@ type SSOFlow struct {
 	accessToken     *string
 	configFile      *files.AWSFile
 	credentialsFile *files.AWSFile
-	ssoClient       *sso.SSO
+	ssoClient       *sso.Client
 	ssoRegion       *string
 	ssoStartUrl     *string
 	orgName         string
