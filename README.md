@@ -31,6 +31,31 @@
         <li><a href="#from-source">From source</a></li>
       </ul>
     </li>
+    <li>
+      <a href="#development">Development</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#building-from-source">Building from Source</a></li>
+        <li><a href="#building-for-different-platforms">Building for Different Platforms</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#testing">Testing</a>
+      <ul>
+        <li><a href="#running-tests">Running Tests</a></li>
+        <li><a href="#test-coverage">Test Coverage</a></li>
+        <li><a href="#test-structure">Test Structure</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#aws-sdk-information">AWS SDK Information</a>
+      <ul>
+        <li><a href="#migrating-from-v1-to-v2">Migrating from v1 to v2</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#project-dependencies">Project Dependencies</a>
+    </li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#configuration">Configuration</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -65,9 +90,160 @@ Download the binary based on your OS in [The releases section](https://github.co
 
 #### Prerequisites
 
-- Go 1.17+
+- Go 1.23+
 
 Run `go install github.com/mikemucc/aws-sso-creds@latest`
+
+## Development
+
+### Prerequisites
+
+- Go 1.23 or later
+- Git
+
+### Building from Source
+
+Clone the repository and build the binary:
+
+```bash
+git clone https://github.com/mikemucc/aws-sso-creds.git
+cd aws-sso-creds
+go build
+```
+
+The binary will be created in the current directory. Run it with:
+
+```bash
+./aws-sso-creds [command] [flags]
+```
+
+### Building for Different Platforms
+
+```bash
+# macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o aws-sso-creds-macos-amd64
+
+# macOS (Apple Silicon/M1/M2)
+GOOS=darwin GOARCH=arm64 go build -o aws-sso-creds-macos-arm64
+
+# Linux
+GOOS=linux GOARCH=amd64 go build -o aws-sso-creds-linux
+
+# Windows
+GOOS=windows GOARCH=amd64 go build -o aws-sso-creds.exe
+```
+
+## Testing
+
+This project includes comprehensive unit and integration tests with mocked AWS API calls.
+
+### Running Tests
+
+Run all tests:
+
+```bash
+go test ./internal/... -v
+```
+
+Run tests for specific packages:
+
+```bash
+# Cache tests only (72.5% coverage)
+go test ./internal/pkg/cache/... -v
+
+# App tests only
+go test ./internal/app/... -v
+```
+
+### Test Coverage
+
+Generate coverage report:
+
+```bash
+# View coverage percentages
+go test ./internal/... -cover
+
+# Generate detailed HTML coverage report
+go test ./internal/pkg/cache ./internal/app -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
+### Test Structure
+
+- **Unit Tests**: Located in `*_test.go` files alongside implementation code
+- **Mocks**: AWS SDK mocks in `internal/mocks/` for testing without real AWS calls
+- **Integration Tests**: End-to-end scenarios testing complete workflows
+- **Test Guide**: See [TEST_GUIDE.md](TEST_GUIDE.md) for detailed testing documentation
+
+### Running Specific Tests
+
+```bash
+# Run a single test
+go test ./internal/app -run TestCompleteSSO -v
+
+# Run with timeout
+go test ./internal/app -timeout 10s -v
+
+# Run with custom flags
+go test ./internal/app -run TestLogin -v -timeout 30s
+```
+
+## AWS SDK Information
+
+This application uses **AWS SDK for Go v2** with the following services:
+
+- `github.com/aws/aws-sdk-go-v2` - Core SDK
+- `github.com/aws/aws-sdk-go-v2/service/sso` - AWS SSO Service
+- `github.com/aws/aws-sdk-go-v2/service/ssooidc` - AWS SSO OIDC Service
+
+### Migrating from v1 to v2
+
+If you're contributing and familiar with the v1 SDK, note these key changes:
+
+**Session Management:**
+```go
+// v1
+session := session.Must(session.NewSession())
+client := sso.New(session, aws.NewConfig().WithRegion(region))
+
+// v2
+cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+client := sso.NewFromConfig(cfg)
+```
+
+**API Calls:**
+```go
+// v1
+resp, err := client.ListAccounts(&sso.ListAccountsInput{...})
+
+// v2
+resp, err := client.ListAccounts(ctx, &sso.ListAccountsInput{...})
+```
+
+**Error Handling:**
+```go
+// v1
+if aerr, ok := err.(awserr.Error); ok { ... }
+
+// v2
+if errors.As(err, &customErr) { ... }
+```
+
+## Project Dependencies
+
+### Key Dependencies
+
+- **Bubbletea** - Terminal UI framework
+- **go-fuzzyfinder** - Fuzzy search interface
+- **AWS SDK v2** - AWS API interactions
+- **Cobra** - CLI framework
+- **Viper** - Configuration management
+- **testify** - Testing utilities (for tests)
+
+### Development Dependencies
+
+- **testify/mock** - Mocking framework for tests
+- **testify/assert** - Assertion utilities for tests
 
 <!-- USAGE EXAMPLES -->
 
