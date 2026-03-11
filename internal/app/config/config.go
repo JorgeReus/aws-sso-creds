@@ -11,7 +11,7 @@ import (
 const configName = "aws-sso-creds"
 
 type Config struct {
-	Orgs             map[string]Organization `mapstructure:"organizations"     validate:"required"`
+	Orgs             map[string]Organization `mapstructure:"organizations"     validate:"required,dive"`
 	Home             string                  `                                 validate:"required"`
 	ErrorColor       string                  `mapstructure:"error_color"       validate:"required"`
 	InformationColor string                  `mapstructure:"information_color" validate:"required"`
@@ -43,6 +43,15 @@ func GetInstance() *Config {
 }
 
 func init() {
+	setDefaults()
+}
+
+func resetForTest() {
+	lock.Lock()
+	defer lock.Unlock()
+
+	c = nil
+	viper.Reset()
 	setDefaults()
 }
 

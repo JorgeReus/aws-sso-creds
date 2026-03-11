@@ -1,2 +1,7 @@
 bin/
+.direnv/
+.enc
 dist/
+.worktrees/
+*.out
+coverage.html

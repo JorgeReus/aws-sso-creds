@@ -42,6 +42,11 @@ func init() {
 	os.MkdirAll(cacheDir, os.ModePerm)
 }
 
+func setCacheDirForTest(dir string) {
+	cacheDir = dir
+	os.MkdirAll(cacheDir, os.ModePerm)
+}
+
 func isExpired(expiresAt time.Time) bool {
 	if expiresAt.Before(time.Now()) {
 		return true
