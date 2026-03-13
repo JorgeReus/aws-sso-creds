@@ -1,10 +1,13 @@
 package cache
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws/session"
 )
 
 func TestGetSSOClientCredsReturnsSavedCredentials(t *testing.T) {
@@ -61,5 +64,136 @@ func TestGetSSOClientCredsReturnsNilForExpiredCredentials(t *testing.T) {
 	}
 	if info.Size() != 0 {
 		t.Fatalf("expired cache file size = %d, want 0", info.Size())
+	}
+}
+
+func TestGetSSOTokenReturnsSavedTokenWhenValidationSucceeds(t *testing.T) {
+	origValidate := validateToken
+	defer func() { validateToken = origValidate }()
+	validateToken = func(*session.Session, string, string) error { return nil }
+
+	setCacheDirForTest(t.TempDir())
+	token := &SSOToken{
+		StartUrl:    "https://dev.awsapps.com/start",
+		Region:      "us-east-1",
+		AccessToken: "token",
+		ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
+	}
+	if err := token.Save(token.StartUrl); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := GetSSOToken(token.StartUrl, &session.Session{}, token.Region)
+	if err != nil {
+		t.Fatalf("GetSSOToken() error = %v", err)
+	}
+	if got == nil || got.AccessToken != "token" {
+		t.Fatalf("GetSSOToken() = %#v, want token", got)
+	}
+}
+
+func TestGetSSOTokenReturnsNilWhenValidationFails(t *testing.T) {
+	origValidate := validateToken
+	defer func() { validateToken = origValidate }()
+	validateToken = func(*session.Session, string, string) error { return errors.New("expired") }
+
+	setCacheDirForTest(t.TempDir())
+	token := &SSOToken{
+		StartUrl:    "https://dev.awsapps.com/start",
+		Region:      "us-east-1",
+		AccessToken: "token",
+		ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
+	}
+	if err := token.Save(token.StartUrl); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := GetSSOToken(token.StartUrl, &session.Session{}, token.Region)
+	if err != nil {
+		t.Fatalf("GetSSOToken() error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetSSOToken() = %#v, want nil", got)
+	}
+}
+
+func TestGetSSOClientCredsReturnsNilForEmptyCacheFile(t *testing.T) {
+	setCacheDirForTest(t.TempDir())
+
+	got, err := GetSSOClientCreds("us-east-1")
+	if err != nil {
+		t.Fatalf("GetSSOClientCreds() error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetSSOClientCreds() = %#v, want nil", got)
+	}
+}
+
+func TestGetSSOTokenParsesLegacyTimestampFormat(t *testing.T) {
+	origValidate := validateToken
+	defer func() { validateToken = origValidate }()
+	validateToken = func(*session.Session, string, string) error { return nil }
+
+	setCacheDirForTest(t.TempDir())
+	token := &SSOToken{
+		StartUrl:    "https://dev.awsapps.com/start",
+		Region:      "us-east-1",
+		AccessToken: "token",
+		ExpiresAt:   time.Now().UTC().Add(time.Hour).Format("2006-01-02T15:04:05UTC"),
+	}
+	if err := token.Save(token.StartUrl); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := GetSSOToken(token.StartUrl, &session.Session{}, token.Region)
+	if err != nil {
+		t.Fatalf("GetSSOToken() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetSSOToken() = nil, want token")
+	}
+}
+
+func TestGetSSOClientCredsReturnsParseErrorForBadTimestamp(t *testing.T) {
+	dir := t.TempDir()
+	setCacheDirForTest(dir)
+	region := "us-east-1"
+	creds := &SSOClientCredentials{
+		ClientId:     "id",
+		ClientSecret: "secret",
+		ExpiresAt:    "definitely-not-a-time",
+	}
+	if err := creds.Save(&region); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := GetSSOClientCreds(region)
+	if err == nil {
+		t.Fatalf("GetSSOClientCreds() = %#v, want parse error", got)
+	}
+}
+
+func TestGetSSOTokenReturnsNilForExpiredToken(t *testing.T) {
+	origValidate := validateToken
+	defer func() { validateToken = origValidate }()
+	validateToken = func(*session.Session, string, string) error { t.Fatal("validateToken should not run for expired token"); return nil }
+
+	setCacheDirForTest(t.TempDir())
+	token := &SSOToken{
+		StartUrl:    "https://dev.awsapps.com/start",
+		Region:      "us-east-1",
+		AccessToken: "token",
+		ExpiresAt:   time.Now().Add(-time.Hour).Format(time.RFC3339),
+	}
+	if err := token.Save(token.StartUrl); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := GetSSOToken(token.StartUrl, &session.Session{}, token.Region)
+	if err != nil {
+		t.Fatalf("GetSSOToken() error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetSSOToken() = %#v, want nil", got)
 	}
 }

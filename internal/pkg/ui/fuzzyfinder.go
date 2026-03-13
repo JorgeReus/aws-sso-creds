@@ -3,7 +3,6 @@ package ui
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -25,6 +24,10 @@ type FuzzyPreviewer struct {
 	outputSections []string
 	rolesMapping   *map[string]string
 }
+
+type findMultiFunc func(slice interface{}, itemFunc func(i int) string, opts ...fuzzyfinder.Option) ([]int, error)
+
+var findMulti findMultiFunc = fuzzyfinder.FindMulti
 
 func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewer, error) {
 	var err error
@@ -106,7 +109,7 @@ func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewe
 	}
 
 	if roles == nil && creds == nil {
-		log.Fatalf("Neither %s nor %s exist, nothing to do", credentialsPath, rolesPath)
+		return nil, fmt.Errorf("Neither %s nor %s exist, nothing to do", credentialsPath, rolesPath)
 	}
 
 	for sec := range extraSections.Iter() {
@@ -161,7 +164,7 @@ func (fp *FuzzyPreviewer) generatePreviewAttrs(selected string) (*string, error)
 
 func (fp *FuzzyPreviewer) Preview() (*string, error) {
 	var selected string
-	_, err := fuzzyfinder.FindMulti(
+	indices, err := findMulti(
 		fp.outputSections,
 		func(i int) string {
 			return fp.outputSections[i]
@@ -180,6 +183,9 @@ func (fp *FuzzyPreviewer) Preview() (*string, error) {
 
 	if err != nil {
 		return nil, err
+	}
+	if len(indices) > 0 && indices[0] >= 0 && indices[0] < len(fp.outputSections) {
+		selected = fp.outputSections[indices[0]]
 	}
 
 	result := strings.TrimPrefix((*fp.rolesMapping)[selected], "profile ")

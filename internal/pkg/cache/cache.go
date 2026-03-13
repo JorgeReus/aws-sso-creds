@@ -15,10 +15,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sso"
-	"github.com/aws/aws-sdk-go/service/ssooidc"
 )
 
 var cacheDir string
+var validateToken = func(sess *session.Session, region, accessToken string) error {
+	aux := sso.New(sess, aws.NewConfig().WithRegion(region))
+	_, err := aux.ListAccounts(&sso.ListAccountsInput{
+		AccessToken: &accessToken,
+	})
+	return err
+}
 
 func (c *SSOClientCredentials) Save(region *string) error {
 	contents, err := json.Marshal(c)
@@ -105,7 +111,6 @@ func (c *SSOToken) Save(url string) error {
 func GetSSOToken(
 	url string,
 	sess *session.Session,
-	oidcClient *ssooidc.SSOOIDC,
 	region string,
 ) (*SSOToken, error) {
 	var result SSOToken
@@ -139,13 +144,7 @@ func GetSSOToken(
 		return nil, nil
 	}
 
-	// Do an extra check to see if the token has expired api wise
-	aux := sso.New(sess, aws.NewConfig().WithRegion(region))
-	_, err = aux.ListAccounts(&sso.ListAccountsInput{
-		AccessToken: &result.AccessToken,
-	})
-
-	if err != nil {
+	if err := validateToken(sess, region, result.AccessToken); err != nil {
 		return nil, nil
 	}
 

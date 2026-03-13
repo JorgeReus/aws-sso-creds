@@ -85,6 +85,7 @@ Usage:
 Available Commands:
   completion  Generate the autocompletion script for the specified shell
   help        Help about any command
+  init        Create or update the aws-sso-creds config interactively
   open        Opens the AWS web console based on your AWS_PROFILE environment variable
   select      Select your role/credentials in a fuzzy-finder previewer
 
@@ -126,6 +127,19 @@ Each organization entry must have:
 - url: The awsapps URL to interact with the AWS SSO/Identity Center Org
 - prefix: A prefix to identify profiles in the aws local config files
 - region: The region of the AWS SSO/Identity Center Org
+
+You can create or update this config interactively with:
+
+```bash
+aws-sso-creds init
+```
+
+The command ensures the config exists and prompts for:
+
+- organization name
+- AWS start URL
+- prefix
+- region
 
 The color entries must be defined in `hex` notation
 

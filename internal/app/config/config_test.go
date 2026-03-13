@@ -8,7 +8,7 @@ import (
 )
 
 func TestInitLoadsOrganizationsAndDefaults(t *testing.T) {
-	resetForTest()
+	ResetForTest()
 
 	home := t.TempDir()
 	configPath := filepath.Join(t.TempDir(), "aws-sso-creds.toml")
@@ -43,7 +43,7 @@ region = "us-east-1"
 }
 
 func TestInitReturnsErrorForMissingOrganizationFields(t *testing.T) {
-	resetForTest()
+	ResetForTest()
 
 	home := t.TempDir()
 	configPath := filepath.Join(t.TempDir(), "aws-sso-creds.toml")

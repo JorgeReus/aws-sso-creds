@@ -2,8 +2,6 @@ package awsssocreds
 
 import (
 	"fmt"
-	"log"
-	"os"
 
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
@@ -14,76 +12,83 @@ import (
 var createStatic, populateRoles, foceLogin, noBrowser bool
 var configPath, home string
 var selectedOrg config.Organization
+var rootDepsFactory = defaultRootDeps
 
-var rootCmd = &cobra.Command{
-	Use:   "aws-sso-creds [flags] [organization]",
-	Short: "aws-sso-creds - Local AWS SSO credentials made easy",
-	Long: `Opinionated CLI app for AWS SSO made in Golang!
-AWS SSO Creds is an AWS SSO creds manager for the shell.
-Use it to easily manage entries in ~/.aws/config & ~/.aws/credentials files, so you can focus on your AWS workflows, without the hazzle of manually managing your credentials.`,
-	Args: func(cmd *cobra.Command, args []string) error {
-
-		if err := config.Init(home, configPath); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-
-		// Validate exactly one arg for the org
-		if err := cobra.ExactArgs(1)(cmd, args); err != nil {
-			return err
-		}
-
-		var ok bool
-		if selectedOrg, ok = config.GetInstance().Orgs[args[0]]; !ok {
-			return fmt.Errorf(
-				"Organization '%s' not found in config file %s",
-				args[0],
-				configPath,
-			)
-		}
-		return nil
-	},
-
-	Run: func(cmd *cobra.Command, args []string) {
-		uiVars := ui.UI{
-			CreateStatic:  createStatic,
-			PopulateRoles: populateRoles,
-			ForceLogin:    foceLogin,
-			NoBrowser:     noBrowser,
-			Org:           selectedOrg,
-		}
-
-		if err := uiVars.Start(); err != nil {
-			log.Fatal(err)
-		}
-	},
+type rootDeps struct {
+	initConfig func(home, configPath string) error
+	startUI    func(ui.UI) error
+	homeDir    func() (string, error)
 }
 
-func Execute() {
+func defaultRootDeps() rootDeps {
+	return rootDeps{
+		initConfig: config.Init,
+		startUI: func(uiVars ui.UI) error {
+			return uiVars.Start()
+		},
+		homeDir: util.HomeDir,
+	}
+}
 
-	// temp
-	rootCmd.Flags().
+func newRootCmd(deps rootDeps) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "aws-sso-creds [flags] [organization]",
+		Short: "aws-sso-creds - Local AWS SSO credentials made easy",
+		Long: `Opinionated CLI app for AWS SSO made in Golang!
+AWS SSO Creds is an AWS SSO creds manager for the shell.
+Use it to easily manage entries in ~/.aws/config & ~/.aws/credentials files, so you can focus on your AWS workflows, without the hazzle of manually managing your credentials.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := deps.initConfig(home, configPath); err != nil {
+				return err
+			}
+
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return err
+			}
+
+			var ok bool
+			if selectedOrg, ok = config.GetInstance().Orgs[args[0]]; !ok {
+				return fmt.Errorf(
+					"Organization '%s' not found in config file %s",
+					args[0],
+					configPath,
+				)
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return deps.startUI(ui.UI{
+				CreateStatic:  createStatic,
+				PopulateRoles: populateRoles,
+				ForceLogin:    foceLogin,
+				NoBrowser:     noBrowser,
+				Org:           selectedOrg,
+			})
+		},
+		SilenceUsage: true,
+	}
+
+	cmd.Flags().
 		BoolVarP(&createStatic, "temp", "t", false, "Create temporary credentials in ~/.aws/credentials")
-
-	// roles
-	rootCmd.Flags().
+	cmd.Flags().
 		BoolVarP(&populateRoles, "populateRoles", "p", false, "Populate AWS SSO roles in ~/.aws/config")
-
-	// forceAuth
-	rootCmd.Flags().
+	cmd.Flags().
 		BoolVarP(&foceLogin, "forceAuth", "f", false, "Force Authentication with AWS SSO")
-
-	// noBrowser
-	rootCmd.Flags().
+	cmd.Flags().
 		BoolVarP(&noBrowser, "noBrowser", "b", false, "Do not open in the browser automatically")
 
+	return cmd
+}
+
+var rootCmd = newRootCmd(rootDepsFactory())
+
+func Execute() {
 	var err error
-	home, err = util.HomeDir()
+	home, err = rootDepsFactory().homeDir()
 	if err != nil {
 		panic(fmt.Errorf("Error getting user home dir: %s", err))
 	}
 
-	// configPath
 	rootCmd.PersistentFlags().
 		StringVarP(&configPath, "config", "c", fmt.Sprintf("%s/.config/aws-sso-creds.toml", home), "Directory of the .toml config")
 

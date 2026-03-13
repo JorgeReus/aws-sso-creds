@@ -2,9 +2,12 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 )
 
@@ -46,13 +49,90 @@ func init() {
 	setDefaults()
 }
 
-func resetForTest() {
+func ResetForTest() {
 	lock.Lock()
 	defer lock.Unlock()
 
 	c = nil
 	viper.Reset()
 	setDefaults()
+}
+
+func SetInstanceForTest(cfg *Config) {
+	lock.Lock()
+	defer lock.Unlock()
+
+	c = cfg
+}
+
+func ResetAndSetTestConfig(home string) error {
+	ResetForTest()
+	SetInstanceForTest(&Config{
+		Home:             home,
+		Orgs:             map[string]Organization{},
+		ErrorColor:       "#fa0718",
+		InformationColor: "#05fa5f",
+		WarningColor:     "#f29830",
+		FocusColor:       "#4287f5",
+		SpinnerColor:     "#42f551",
+	})
+	return nil
+}
+
+func UpsertOrganizationConfig(configPath string, org Organization) error {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return err
+	}
+
+	tree, err := toml.Load("")
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(configPath); err == nil {
+		loaded, err := toml.LoadFile(configPath)
+		if err != nil {
+			return err
+		}
+		tree = loaded
+	}
+
+	defaults := map[string]string{
+		"error_color":       "#fa0718",
+		"information_color": "#05fa5f",
+		"warning_color":     "#f29830",
+		"focus_color":       "#4287f5",
+		"spinner_color":     "#42f551",
+	}
+	for key, value := range defaults {
+		if !tree.Has(key) {
+			tree.Set(key, value)
+		}
+	}
+
+	if raw := tree.Get("organizations"); raw != nil {
+		if orgs, ok := raw.(*toml.Tree); ok {
+			for _, existingName := range orgs.Keys() {
+				if existingName == org.Name {
+					continue
+				}
+				existingURL := tree.Get(fmt.Sprintf("organizations.%s.url", existingName))
+				if existingURL == org.URL {
+					return fmt.Errorf("organization %q already uses start URL %q", existingName, org.URL)
+				}
+				existingPrefix := tree.Get(fmt.Sprintf("organizations.%s.prefix", existingName))
+				if existingPrefix == org.Prefix {
+					return fmt.Errorf("organization %q already uses prefix %q", existingName, org.Prefix)
+				}
+			}
+		}
+	}
+
+	orgPath := fmt.Sprintf("organizations.%s", org.Name)
+	tree.Set(fmt.Sprintf("%s.url", orgPath), org.URL)
+	tree.Set(fmt.Sprintf("%s.prefix", orgPath), org.Prefix)
+	tree.Set(fmt.Sprintf("%s.region", orgPath), org.Region)
+
+	return os.WriteFile(configPath, []byte(tree.String()), 0o644)
 }
 
 func Init(home string, configPath string) error {

@@ -2,16 +2,14 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"os/user"
 	"time"
 
 	sso "github.com/JorgeReus/aws-sso-creds/internal/app"
+	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/util"
-
-	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	te "github.com/muesli/termenv"
@@ -25,6 +23,25 @@ type UI struct {
 	Org           config.Organization
 }
 
+type flowAPI interface {
+	PopulateRoles() ([]string, error)
+	GetCredentials() ([]sso.CredentialsResult, error)
+}
+
+type programRunner interface {
+	Start() error
+}
+
+type uiDeps struct {
+	currentUser          func() (*user.User, error)
+	validateSuperuserFile func(string, *user.User) string
+	newProgram           func(tea.Model) programRunner
+	login                func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error)
+	configFileSSOEmpty   func(string, string) bool
+	println              func(...interface{}) (int, error)
+	sleep                func(time.Duration)
+}
+
 var (
 	c                 config.Config
 	errorColor        te.Color
@@ -32,7 +49,7 @@ var (
 	warningColor      te.Color
 	focusColor        te.Color
 	spinnerColor      te.Color
-	flow              *sso.SSOFlow
+	flow              flowAPI
 	hasFinished       bool
 	needsUserApproval = false
 	displayMsg        string
@@ -40,12 +57,38 @@ var (
 	msgBus            = bus.NewBus()
 )
 
-func printErr(err error) {
-	fmt.Println(te.String("Error: " + err.Error()).Foreground(errorColor).String())
+var uiDepsFactory = defaultUIDeps
+
+func defaultUIDeps() uiDeps {
+	return uiDeps{
+		currentUser: user.Current,
+		validateSuperuserFile: util.ValidateSuperuserFile,
+		newProgram: func(m tea.Model) programRunner {
+			return tea.NewProgram(m)
+		},
+		login: func(org config.Organization, forceLogin, noBrowser bool, msgBus *bus.Bus) (flowAPI, error) {
+			return sso.Login(org, forceLogin, noBrowser, msgBus)
+		},
+		configFileSSOEmpty: files.ConfigFileSSOEmpty,
+		println:            fmt.Println,
+		sleep:              time.Sleep,
+	}
 }
 
-func printWarning(warn string) {
-	fmt.Println(te.String("Warning: " + warn).Foreground(warningColor).String())
+func resetUIStateForTest() {
+	hasFinished = false
+	needsUserApproval = false
+	displayMsg = ""
+	msgBus = bus.NewBus()
+	flow = nil
+}
+
+func printErr(err error) string {
+	return te.String("Error: " + err.Error()).Foreground(errorColor).String()
+}
+
+func printWarning(warn string) string {
+	return te.String("Warning: " + warn).Foreground(warningColor).String()
 }
 
 type model struct {
@@ -59,46 +102,47 @@ func initialModel() model {
 }
 
 func (u *UI) Start() error {
-	c := config.GetInstance()
-	errorColor = color(c.ErrorColor)
-	informationColor = color(c.InformationColor)
-	warningColor = color(c.WarningColor)
-	focusColor = color(c.FocusColor)
-	spinnerColor = color(c.SpinnerColor)
+	return startWithDeps(*u, uiDepsFactory())
+}
 
-	user, err := user.Current()
+func startWithDeps(u UI, deps uiDeps) error {
+	cfg := config.GetInstance()
+	errorColor = color(cfg.ErrorColor)
+	informationColor = color(cfg.InformationColor)
+	warningColor = color(cfg.WarningColor)
+	focusColor = color(cfg.FocusColor)
+	spinnerColor = color(cfg.SpinnerColor)
+
+	currentUser, err := deps.currentUser()
 	if err != nil {
-		printErr(err)
-		os.Exit(1)
+		_, _ = deps.println(printErr(err))
+		return err
 	}
 
 	home := config.GetInstance().Home
 	credentialsPath := fmt.Sprintf("%s/.aws/credentials", home)
 	configFilePath := fmt.Sprintf("%s/.aws/config", home)
 
-	// Validate if the credentials file is owned by root
 	if u.CreateStatic {
-		util.ValidateSuperuserFile(credentialsPath, user)
+		deps.validateSuperuserFile(credentialsPath, currentUser)
 	}
 
-	// Validate if the config file is owned by root
 	if u.PopulateRoles {
-		util.ValidateSuperuserFile(configFilePath, user)
+		deps.validateSuperuserFile(configFilePath, currentUser)
 	}
 
 	m := initialModel()
-	p := tea.NewProgram(m)
-	go u.handleFlow()
+	p := deps.newProgram(m)
+	go handleFlowWithDeps(u, deps)
 	if err := p.Start(); err != nil {
-		fmt.Println(fmt.Sprintf("Error starting program: %s", err))
-		os.Exit(1)
+		_, _ = deps.println(fmt.Sprintf("Error starting program: %s", err))
+		return err
 	}
 	return nil
 }
 
 func (m model) View() string {
-	s := te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg
-	return s
+	return te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg
 }
 
 func (m model) Init() tea.Cmd {
@@ -115,16 +159,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "enter":
 			if needsUserApproval {
-				msgBus.Send(bus.BusMsg{
-					MsgType:  bus.MSG_TYPE_CONT,
-					Contents: "",
-				})
+				msgBus.Send(bus.BusMsg{MsgType: bus.MSG_TYPE_CONT, Contents: ""})
 			}
 			return m, nil
 		default:
 			return m, nil
 		}
-
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		if hasFinished {
@@ -136,63 +176,66 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func handleBusMessage(msg bus.BusMsg, deps uiDeps) {
+	switch msg.MsgType {
+	case bus.MSG_TYPE_INFO:
+		_, _ = deps.println(te.String(msg.Contents).Foreground(informationColor).String())
+	case bus.MSG_TYPE_ERR:
+		_, _ = deps.println(printWarning(msg.Contents))
+		displayMsg = te.String("Continue in your browser and press ENTER").Foreground(informationColor).String()
+		needsUserApproval = true
+	default:
+	}
+}
+
 func channelSubscriber() {
+	channelSubscriberWithDeps(uiDepsFactory())
+}
+
+func channelSubscriberWithDeps(deps uiDeps) {
 	for {
 		msg := msgBus.Recv()
-		switch msg.MsgType {
-		case bus.MSG_TYPE_INFO:
-			fmt.Println(te.String(msg.Contents).Foreground(informationColor).String())
-			break
-		case bus.MSG_TYPE_ERR:
-			printWarning(msg.Contents)
-			displayMsg = te.String("Continue in your browser and press ENTER").
-				Foreground(informationColor).
-				String()
-			needsUserApproval = true
-			break
-		default:
-			break
-		}
-		time.Sleep(time.Millisecond * 200)
+		handleBusMessage(msg, deps)
+		deps.sleep(time.Millisecond * 200)
 	}
 }
 
 func (u *UI) handleFlow() {
+	handleFlowWithDeps(*u, uiDepsFactory())
+}
+
+func handleFlowWithDeps(u UI, deps uiDeps) {
 	displayMsg = te.String(fmt.Sprintf("Logging in into AWS SSO org: %s", u.Org.Name)).
 		Foreground(informationColor).
 		String()
+
+	go channelSubscriberWithDeps(deps)
+
 	var err error
-	go channelSubscriber()
-	flow, err = sso.Login(
-		u.Org,
-		u.ForceLogin,
-		u.NoBrowser,
-		msgBus,
-	)
+	flow, err = deps.login(u.Org, u.ForceLogin, u.NoBrowser, msgBus)
 	if err != nil {
 		hasFinished = true
-		printErr(err)
+		_, _ = deps.println(printErr(err))
 		return
 	}
 
-	isNewRun := files.ConfigFileSSOEmpty(config.GetInstance().Home, u.Org.Name)
+	isNewRun := deps.configFileSSOEmpty(config.GetInstance().Home, u.Org.Name)
 
 	if u.PopulateRoles || isNewRun {
 		displayMsg = "Updating roles"
-		fmt.Println("Synced roles in ~/.aws/config")
+		_, _ = deps.println("Synced roles in ~/.aws/config")
 		roles, err := flow.PopulateRoles()
 		if err != nil {
 			hasFinished = true
-			printErr(err)
+			_, _ = deps.println(printErr(err))
 			return
 		}
 		for _, role := range roles {
 			if role != "DEFAULT" {
-				s := fmt.Sprintf("  SSO Role %s", te.String(role).Foreground(focusColor).String())
-				fmt.Println(s)
+				_, _ = deps.println(fmt.Sprintf("  SSO Role %s", te.String(role).Foreground(focusColor).String()))
 			}
 		}
-		fmt.Println()
+		_, _ = deps.println()
 	}
 
 	if u.CreateStatic {
@@ -200,31 +243,30 @@ func (u *UI) handleFlow() {
 		roles, err := flow.GetCredentials()
 		if err != nil {
 			hasFinished = true
-			printErr(err)
+			_, _ = deps.println(printErr(err))
 			return
 		}
 		displayMsg = "Updating static credentials"
-		fmt.Println("Added temporary credentials in ~/.aws/credentials")
+		_, _ = deps.println("Added temporary credentials in ~/.aws/credentials")
 		for _, role := range roles {
 			if role.WasSuccesful {
-				s := fmt.Sprintf(
+				_, _ = deps.println(fmt.Sprintf(
 					"  %s, will expire at %s",
 					te.String(role.ProfileName).Foreground(focusColor).String(),
 					te.String(role.ExpiresAt).Foreground(focusColor).String(),
-				)
-				fmt.Println(s)
+				))
 			} else {
-				s := fmt.Sprintf("Entry error %s in ~/.aws/config, try to update your roles with -r", te.String(role.ProfileName).Foreground(errorColor).String())
-				fmt.Println(s)
+				_, _ = deps.println(fmt.Sprintf(
+					"Entry error %s in ~/.aws/config, try to update your roles with -r",
+					te.String(role.ProfileName).Foreground(errorColor).String(),
+				))
 			}
 		}
-		fmt.Println()
+		_, _ = deps.println()
 	}
 
 	if (u.PopulateRoles && u.CreateStatic) || isNewRun {
-		exportRolesString := fmt.Sprintf("You can use aws-sso-creds -l to select your profile")
-		fmt.Println(exportRolesString)
+		_, _ = deps.println("You can use aws-sso-creds -l to select your profile")
 	}
 	hasFinished = true
-	return
 }
