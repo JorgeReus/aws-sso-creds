@@ -22,8 +22,55 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run tests
-        run: go test ./...
+      - name: Run tests with package coverage gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          go test ./... -coverprofile=coverage.out
+
+          threshold=80.0
+          failed=0
+
+          coverage_report=$(awk '
+            NR > 1 {
+              file = $1
+              sub(/:.*/, "", file)
+              pkg = file
+              sub(/\/[^\/]+\.go$/, "", pkg)
+              if (pkg == "github.com/JorgeReus/aws-sso-creds") {
+                next
+              }
+
+              stmts = $2 + 0
+              count = $3 + 0
+              total[pkg] += stmts
+              if (count > 0) {
+                covered[pkg] += stmts
+              }
+            }
+            END {
+              for (pkg in total) {
+                pct = 0
+                if (total[pkg] > 0) {
+                  pct = 100 * covered[pkg] / total[pkg]
+                }
+                printf "%s %.1f\n", pkg, pct
+              }
+            }
+          ' coverage.out | sort)
+
+          while read -r pkg pct; do
+            echo "$pkg $pct%"
+            if awk "BEGIN {exit !($pct < $threshold)}"; then
+              echo "coverage for $pkg is below $threshold%"
+              failed=1
+            fi
+          done <<< "$coverage_report"
+
+          if [[ $failed -ne 0 ]]; then
+            exit 1
+          fi
 
   commitlint:
     name: Conventional Commits

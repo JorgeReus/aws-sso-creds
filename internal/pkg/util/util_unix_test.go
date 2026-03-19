@@ -10,6 +10,16 @@ import (
 	"testing"
 )
 
+func TestHomeDirReturnsPath(t *testing.T) {
+	homeDir, err := HomeDir()
+	if err != nil {
+		t.Fatalf("HomeDir() error = %v", err)
+	}
+	if homeDir == "" {
+		t.Fatal("HomeDir() returned empty path")
+	}
+}
+
 func TestValidateSuperuserFileReturnsMissingFileWarning(t *testing.T) {
 	msg := ValidateSuperuserFile(filepath.Join(t.TempDir(), "missing"), &user.User{Uid: "1000"})
 	if !strings.Contains(msg, "doesn't exist") {
