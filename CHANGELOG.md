@@ -1,4 +1,19 @@
 <a name="unreleased"></a>
+## [1.1.0](https://github.com/JorgeReus/aws-sso-creds/compare/aws-sso-creds-v1.0.5...aws-sso-creds-v1.1.0) (2026-03-19)
+
+
+### Features
+
+* Added code to comply with the IAM Identity Center Code Message ([37d6c06](https://github.com/JorgeReus/aws-sso-creds/commit/37d6c06e1f024f7b1f3ed350d850cfd4894375f0))
+* First commit ([6ca873c](https://github.com/JorgeReus/aws-sso-creds/commit/6ca873c3f1c82fe2049226f5eb19c4bb0df17cee))
+* Refactored fuzzyfinder previewer ([#3](https://github.com/JorgeReus/aws-sso-creds/issues/3)) ([0890e29](https://github.com/JorgeReus/aws-sso-creds/commit/0890e298f5eb3b947083e3378a69a3124787abcf))
+* Refactored using cobra ([#5](https://github.com/JorgeReus/aws-sso-creds/issues/5)) ([df9cebb](https://github.com/JorgeReus/aws-sso-creds/commit/df9cebb0358e81a699f1200b09d5957abc823221))
+
+
+### Bug Fixes
+
+* Fixed previewer bug that crashed whenever the files didn't existed ([1aae13e](https://github.com/JorgeReus/aws-sso-creds/commit/1aae13e22edbd8c1ead9f257193de9591599961b))
+
 ## [Unreleased]
 
 
