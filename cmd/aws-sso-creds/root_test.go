@@ -1,13 +1,62 @@
 package awsssocreds
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
+	"github.com/spf13/cobra"
 )
+
+func TestRootHelpShowsVersion(t *testing.T) {
+	cmd := newRootCmd(rootDeps{
+		initConfig: func(home, path string) error {
+			return nil
+		},
+	})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Version: "+version) {
+		t.Fatalf("help output = %q, want version line", out.String())
+	}
+}
+
+func TestSubcommandHelpDoesNotShowVersion(t *testing.T) {
+	cmd := newRootCmd(rootDeps{
+		initConfig: func(home, path string) error {
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use: "child",
+	})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"child", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if strings.Contains(out.String(), "Version: "+version) {
+		t.Fatalf("help output = %q, did not want version line", out.String())
+	}
+}
+
+func TestDefaultVersionIsDirty(t *testing.T) {
+	if version != "dirty" {
+		t.Fatalf("version = %q, want dirty for default builds", version)
+	}
+}
 
 func TestRootCommandReturnsOrgNotFoundError(t *testing.T) {
 	cmd := newRootCmd(rootDeps{

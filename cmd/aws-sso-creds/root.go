@@ -11,6 +11,7 @@ import (
 
 var createStatic, populateRoles, foceLogin, noBrowser bool
 var configPath, home string
+var version = "dirty"
 var selectedOrg config.Organization
 var rootDepsFactory = defaultRootDeps
 
@@ -31,6 +32,10 @@ func defaultRootDeps() rootDeps {
 }
 
 func newRootCmd(deps rootDeps) *cobra.Command {
+	cobra.AddTemplateFunc("buildVersion", func() string {
+		return version
+	})
+
 	cmd := &cobra.Command{
 		Use:   "aws-sso-creds [flags] [organization]",
 		Short: "aws-sso-creds - Local AWS SSO credentials made easy",
@@ -67,6 +72,7 @@ Use it to easily manage entries in ~/.aws/config & ~/.aws/credentials files, so 
 		},
 		SilenceUsage: true,
 	}
+	cmd.SetHelpTemplate(cmd.HelpTemplate() + "{{if eq .CommandPath \"aws-sso-creds\"}}\nVersion: {{buildVersion}}\n{{end}}")
 
 	cmd.Flags().
 		BoolVarP(&createStatic, "temp", "t", false, "Create temporary credentials in ~/.aws/credentials")

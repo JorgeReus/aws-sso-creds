@@ -7,6 +7,8 @@ builds:
   - main: main.go
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -X github.com/JorgeReus/aws-sso-creds/cmd/aws-sso-creds.version={{.Version}}
     goos:
       - linux
       - windows
