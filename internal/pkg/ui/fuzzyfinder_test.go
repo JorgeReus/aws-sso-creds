@@ -68,6 +68,26 @@ func TestGeneratePreviewAttrsReturnsAccountAndExpiryDetails(t *testing.T) {
 	}
 }
 
+func TestGeneratePreviewAttrsHandlesParseErrors(t *testing.T) {
+	fp := &FuzzyPreviewer{
+		rolesMapping: &map[string]string{"selected": "profile dev:Admin"},
+		entries: mustPreviewEntries(t, map[string]map[string]string{
+			"profile dev:Admin": {
+				"issued_time":  "bad",
+				"expires_time": "bad",
+			},
+		}),
+	}
+
+	got, err := fp.generatePreviewAttrs("selected")
+	if err != nil {
+		t.Fatalf("generatePreviewAttrs() error = %v", err)
+	}
+	if !strings.Contains(*got, "Cannot parse") {
+		t.Fatalf("preview = %q, want parse error message", *got)
+	}
+}
+
 func TestPreviewReturnsSelectedProfileName(t *testing.T) {
 	origFindMulti := findMulti
 	defer func() { findMulti = origFindMulti }()
