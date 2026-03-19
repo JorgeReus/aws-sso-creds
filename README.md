@@ -158,6 +158,15 @@ Don't forget to give the project a star! Thanks again!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+## Releases
+
+- Pull requests run GitHub Actions CI with `go test ./...`.
+- Pull request commits must follow Conventional Commits so semantic versioning can be derived automatically.
+- Pushes to `main` do not publish a release.
+- Pushes to `main` run `release-please`, which opens or updates a release PR and creates the next `X.Y.Z` tag when that PR is merged.
+- Semver tags matching `X.Y.Z` run GoReleaser and publish the GitHub release artifacts.
+- Configure a `RELEASE_PLEASE_TOKEN` repository secret backed by a PAT or GitHub App token. The default `GITHUB_TOKEN` does not trigger the tag-based release workflow when `release-please` creates the tag.
+
 <!-- LICENSE -->
 
 ## License
