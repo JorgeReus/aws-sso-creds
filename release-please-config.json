@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "go",
-      "package-name": "aws-sso-creds"
+      "include-component-in-tag": false
     }
   }
 }
