@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"os/user"
+	"strings"
+	"sync"
 	"time"
 
 	sso "github.com/JorgeReus/aws-sso-creds/internal/app"
@@ -53,6 +55,8 @@ var (
 	hasFinished       bool
 	needsUserApproval = false
 	displayMsg        string
+	outputLines       []string
+	outputLinesMu     sync.RWMutex
 	color             = te.ColorProfile().Color
 	msgBus            = bus.NewBus()
 )
@@ -79,8 +83,21 @@ func resetUIStateForTest() {
 	hasFinished = false
 	needsUserApproval = false
 	displayMsg = ""
+	outputLines = nil
 	msgBus = bus.NewBus()
 	flow = nil
+}
+
+func appendOutputLine(line string) {
+	outputLinesMu.Lock()
+	defer outputLinesMu.Unlock()
+	outputLines = append(outputLines, line)
+}
+
+func renderedOutputLines() string {
+	outputLinesMu.RLock()
+	defer outputLinesMu.RUnlock()
+	return strings.Join(outputLines, "\n")
 }
 
 func printErr(err error) string {
@@ -142,7 +159,15 @@ func startWithDeps(u UI, deps uiDeps) error {
 }
 
 func (m model) View() string {
-	return te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg
+	if hasFinished {
+		return renderedOutputLines()
+	}
+
+	output := renderedOutputLines()
+	if output == "" {
+		return te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg
+	}
+	return te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg + "\n" + output
 }
 
 func (m model) Init() tea.Cmd {
@@ -179,9 +204,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func handleBusMessage(msg bus.BusMsg, deps uiDeps) {
 	switch msg.MsgType {
 	case bus.MSG_TYPE_INFO:
-		_, _ = deps.println(te.String(msg.Contents).Foreground(informationColor).String())
+		appendOutputLine(te.String(msg.Contents).Foreground(informationColor).String())
 	case bus.MSG_TYPE_ERR:
-		_, _ = deps.println(printWarning(msg.Contents))
+		appendOutputLine(printWarning(msg.Contents))
 		displayMsg = te.String("Continue in your browser and press ENTER").Foreground(informationColor).String()
 		needsUserApproval = true
 	default:
@@ -214,8 +239,8 @@ func handleFlowWithDeps(u UI, deps uiDeps) {
 	var err error
 	flow, err = deps.login(u.Org, u.ForceLogin, u.NoBrowser, msgBus)
 	if err != nil {
+		appendOutputLine(printErr(err))
 		hasFinished = true
-		_, _ = deps.println(printErr(err))
 		return
 	}
 
@@ -223,50 +248,50 @@ func handleFlowWithDeps(u UI, deps uiDeps) {
 
 	if u.PopulateRoles || isNewRun {
 		displayMsg = "Updating roles"
-		_, _ = deps.println("Synced roles in ~/.aws/config")
+		appendOutputLine("Synced roles in ~/.aws/config")
 		roles, err := flow.PopulateRoles()
 		if err != nil {
+			appendOutputLine(printErr(err))
 			hasFinished = true
-			_, _ = deps.println(printErr(err))
 			return
 		}
 		for _, role := range roles {
 			if role != "DEFAULT" {
-				_, _ = deps.println(fmt.Sprintf("  SSO Role %s", te.String(role).Foreground(focusColor).String()))
+				appendOutputLine(fmt.Sprintf("  SSO Role %s", te.String(role).Foreground(focusColor).String()))
 			}
 		}
-		_, _ = deps.println()
+		appendOutputLine("")
 	}
 
 	if u.CreateStatic {
 		displayMsg = te.String("Getting static credentials").Foreground(informationColor).String()
 		roles, err := flow.GetCredentials()
 		if err != nil {
+			appendOutputLine(printErr(err))
 			hasFinished = true
-			_, _ = deps.println(printErr(err))
 			return
 		}
 		displayMsg = "Updating static credentials"
-		_, _ = deps.println("Added temporary credentials in ~/.aws/credentials")
+		appendOutputLine("Added temporary credentials in ~/.aws/credentials")
 		for _, role := range roles {
 			if role.WasSuccesful {
-				_, _ = deps.println(fmt.Sprintf(
+				appendOutputLine(fmt.Sprintf(
 					"  %s, will expire at %s",
 					te.String(role.ProfileName).Foreground(focusColor).String(),
 					te.String(role.ExpiresAt).Foreground(focusColor).String(),
 				))
 			} else {
-				_, _ = deps.println(fmt.Sprintf(
+				appendOutputLine(fmt.Sprintf(
 					"Entry error %s in ~/.aws/config, try to update your roles with -r",
 					te.String(role.ProfileName).Foreground(errorColor).String(),
 				))
 			}
 		}
-		_, _ = deps.println()
+		appendOutputLine("")
 	}
 
 	if (u.PopulateRoles && u.CreateStatic) || isNewRun {
-		_, _ = deps.println("You can use aws-sso-creds -l to select your profile")
+		appendOutputLine("You can use aws-sso-creds -l to select your profile")
 	}
 	hasFinished = true
 }
