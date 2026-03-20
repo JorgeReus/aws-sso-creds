@@ -9,6 +9,10 @@
         {
           "type": "generic",
           "path": "README.md"
+        },
+        {
+          "type": "generic",
+          "path": "cmd/aws-sso-creds/release_version.txt"
         }
       ]
     }
