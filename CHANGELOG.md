@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.3.2](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.1...1.3.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* fix build metadata injectin by using release please extra files ([e607c43](https://github.com/JorgeReus/aws-sso-creds/commit/e607c4379aeaf1956b9ff088f0ff2512eb01e7db))
+
 ## [1.3.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.0...1.3.1) (2026-03-20)
 
 
