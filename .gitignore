@@ -6,3 +6,4 @@ dist/
 *.out
 coverage.html
 .cache/
+result
