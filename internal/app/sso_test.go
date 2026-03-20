@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,11 +14,11 @@ import (
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/cache"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	awssso "github.com/aws/aws-sdk-go/service/sso"
-	"github.com/aws/aws-sdk-go/service/ssooidc"
+	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sso"
+	ssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
+	ssooidctypes "github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
 	"gopkg.in/ini.v1"
 )
 
@@ -31,15 +32,15 @@ type fakeOIDCClient struct {
 	tokenCalls  int
 }
 
-func (f *fakeOIDCClient) RegisterClient(*ssooidc.RegisterClientInput) (*ssooidc.RegisterClientOutput, error) {
+func (f *fakeOIDCClient) RegisterClient(context.Context, *ssooidc.RegisterClientInput, ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
 	return f.registerOut, f.registerErr
 }
 
-func (f *fakeOIDCClient) StartDeviceAuthorization(*ssooidc.StartDeviceAuthorizationInput) (*ssooidc.StartDeviceAuthorizationOutput, error) {
+func (f *fakeOIDCClient) StartDeviceAuthorization(context.Context, *ssooidc.StartDeviceAuthorizationInput, ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error) {
 	return f.startOut, f.startErr
 }
 
-func (f *fakeOIDCClient) CreateToken(*ssooidc.CreateTokenInput) (*ssooidc.CreateTokenOutput, error) {
+func (f *fakeOIDCClient) CreateToken(context.Context, *ssooidc.CreateTokenInput, ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error) {
 	idx := f.tokenCalls
 	f.tokenCalls++
 	if idx < len(f.tokenErrs) && f.tokenErrs[idx] != nil {
@@ -52,18 +53,18 @@ func (f *fakeOIDCClient) CreateToken(*ssooidc.CreateTokenInput) (*ssooidc.Create
 }
 
 type fakeSSOClient struct {
-	listAccountsOutputs []*awssso.ListAccountsOutput
+	listAccountsOutputs []*sso.ListAccountsOutput
 	listAccountsErr     error
 	listAccountsCalls   int
 
-	listAccountRoles map[string][]*awssso.ListAccountRolesOutput
+	listAccountRoles map[string][]*sso.ListAccountRolesOutput
 	listRoleErr      error
 
-	roleCredsByRole map[string]*awssso.GetRoleCredentialsOutput
+	roleCredsByRole map[string]*sso.GetRoleCredentialsOutput
 	roleCredsErrs   map[string]error
 }
 
-func (f *fakeSSOClient) ListAccounts(*awssso.ListAccountsInput) (*awssso.ListAccountsOutput, error) {
+func (f *fakeSSOClient) ListAccounts(context.Context, *sso.ListAccountsInput, ...func(*sso.Options)) (*sso.ListAccountsOutput, error) {
 	if f.listAccountsErr != nil {
 		return nil, f.listAccountsErr
 	}
@@ -72,25 +73,25 @@ func (f *fakeSSOClient) ListAccounts(*awssso.ListAccountsInput) (*awssso.ListAcc
 	if idx < len(f.listAccountsOutputs) {
 		return f.listAccountsOutputs[idx], nil
 	}
-	return &awssso.ListAccountsOutput{}, nil
+	return &sso.ListAccountsOutput{}, nil
 }
 
-func (f *fakeSSOClient) ListAccountRoles(input *awssso.ListAccountRolesInput) (*awssso.ListAccountRolesOutput, error) {
+func (f *fakeSSOClient) ListAccountRoles(_ context.Context, input *sso.ListAccountRolesInput, _ ...func(*sso.Options)) (*sso.ListAccountRolesOutput, error) {
 	if f.listRoleErr != nil {
 		return nil, f.listRoleErr
 	}
-	accountID := aws.StringValue(input.AccountId)
+	accountID := awsv2.ToString(input.AccountId)
 	responses := f.listAccountRoles[accountID]
 	if len(responses) == 0 {
-		return &awssso.ListAccountRolesOutput{}, nil
+		return &sso.ListAccountRolesOutput{}, nil
 	}
 	resp := responses[0]
 	f.listAccountRoles[accountID] = responses[1:]
 	return resp, nil
 }
 
-func (f *fakeSSOClient) GetRoleCredentials(input *awssso.GetRoleCredentialsInput) (*awssso.GetRoleCredentialsOutput, error) {
-	roleName := aws.StringValue(input.RoleName)
+func (f *fakeSSOClient) GetRoleCredentials(_ context.Context, input *sso.GetRoleCredentialsInput, _ ...func(*sso.Options)) (*sso.GetRoleCredentialsOutput, error) {
+	roleName := awsv2.ToString(input.RoleName)
 	if err, ok := f.roleCredsErrs[roleName]; ok {
 		return nil, err
 	}
@@ -104,10 +105,15 @@ func TestLoginUsesCachedCredentialsAndTokenWithoutRegisteringClient(t *testing.T
 	home := setupAppConfig(t)
 	future := time.Now().Add(time.Hour).Format(time.RFC3339)
 	deps := defaultFakeLoginDeps(home)
+	oidcFactoryCalls := 0
+	deps.newOIDCClient = func(context.Context, string) (oidcClientAPI, error) {
+		oidcFactoryCalls++
+		return nil, errors.New("oidc config failed")
+	}
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
 		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: future}, nil
 	}
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) {
+	deps.getToken = func(string, string) (*cache.SSOToken, error) {
 		return &cache.SSOToken{AccessToken: "token", ExpiresAt: future}, nil
 	}
 
@@ -122,6 +128,9 @@ func TestLoginUsesCachedCredentialsAndTokenWithoutRegisteringClient(t *testing.T
 	if flow.ssoClient == nil {
 		t.Fatal("flow.ssoClient = nil")
 	}
+	if oidcFactoryCalls != 0 {
+		t.Fatalf("newOIDCClient calls = %d, want 0", oidcFactoryCalls)
+	}
 }
 
 func TestLoginForceAuthRegistersClientAndPollsUntilTokenIssued(t *testing.T) {
@@ -129,28 +138,28 @@ func TestLoginForceAuthRegistersClientAndPollsUntilTokenIssued(t *testing.T) {
 	now := time.Now()
 	oidc := &fakeOIDCClient{
 		registerOut: &ssooidc.RegisterClientOutput{
-			ClientId:              aws.String("id"),
-			ClientSecret:          aws.String("secret"),
-			ClientSecretExpiresAt: aws.Int64(now.Add(time.Hour).Unix()),
+			ClientId:              awsv2.String("id"),
+			ClientSecret:          awsv2.String("secret"),
+			ClientSecretExpiresAt: now.Add(time.Hour).Unix(),
 		},
 		startOut: &ssooidc.StartDeviceAuthorizationOutput{
-			UserCode:                aws.String("ABCD"),
-			VerificationUriComplete: aws.String("https://verify"),
-			Interval:                aws.Int64(1),
-			DeviceCode:              aws.String("device"),
+			UserCode:                awsv2.String("ABCD"),
+			VerificationUriComplete: awsv2.String("https://verify"),
+			Interval:                1,
+			DeviceCode:              awsv2.String("device"),
 		},
-		tokenErrs: []error{awserr.New(ssooidc.ErrCodeAuthorizationPendingException, "pending", nil)},
+		tokenErrs: []error{&ssooidctypes.AuthorizationPendingException{Message: awsv2.String("pending")}},
 		tokenOuts: []*ssooidc.CreateTokenOutput{
 			nil,
-			{AccessToken: aws.String("fresh-token"), ExpiresIn: aws.Int64(3600)},
+			{AccessToken: awsv2.String("fresh-token"), ExpiresIn: 3600},
 		},
 	}
 	var savedClient, savedToken bool
 	sleepCalls := 0
 	deps := defaultFakeLoginDeps(home)
-	deps.newOIDCClient = func(*session.Session, string) oidcClientAPI { return oidc }
+	deps.newOIDCClient = func(context.Context, string) (oidcClientAPI, error) { return oidc, nil }
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) { return nil, nil }
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) { return nil, nil }
+	deps.getToken = func(string, string) (*cache.SSOToken, error) { return nil, nil }
 	deps.saveClientCreds = func(*cache.SSOClientCredentials, *string) error {
 		savedClient = true
 		return nil
@@ -187,24 +196,24 @@ func TestLoginSendsBrowserFallbackMessage(t *testing.T) {
 	now := time.Now()
 	oidc := &fakeOIDCClient{
 		registerOut: &ssooidc.RegisterClientOutput{
-			ClientId:              aws.String("id"),
-			ClientSecret:          aws.String("secret"),
-			ClientSecretExpiresAt: aws.Int64(now.Add(time.Hour).Unix()),
+			ClientId:              awsv2.String("id"),
+			ClientSecret:          awsv2.String("secret"),
+			ClientSecretExpiresAt: now.Add(time.Hour).Unix(),
 		},
 		startOut: &ssooidc.StartDeviceAuthorizationOutput{
-			UserCode:                aws.String("ABCD"),
-			VerificationUriComplete: aws.String("https://verify"),
-			Interval:                aws.Int64(1),
-			DeviceCode:              aws.String("device"),
+			UserCode:                awsv2.String("ABCD"),
+			VerificationUriComplete: awsv2.String("https://verify"),
+			Interval:                1,
+			DeviceCode:              awsv2.String("device"),
 		},
 		tokenOuts: []*ssooidc.CreateTokenOutput{
-			{AccessToken: aws.String("fresh-token"), ExpiresIn: aws.Int64(3600)},
+			{AccessToken: awsv2.String("fresh-token"), ExpiresIn: 3600},
 		},
 	}
 	deps := defaultFakeLoginDeps(home)
-	deps.newOIDCClient = func(*session.Session, string) oidcClientAPI { return oidc }
+	deps.newOIDCClient = func(context.Context, string) (oidcClientAPI, error) { return oidc, nil }
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) { return nil, nil }
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) { return nil, nil }
+	deps.getToken = func(string, string) (*cache.SSOToken, error) { return nil, nil }
 	deps.openURL = func(string) error { return errors.New("open failed") }
 	deps.sleep = func(time.Duration) {}
 	deps.now = func() time.Time { return now }
@@ -236,7 +245,7 @@ func TestGetCachedSSOFlowReturnsErrorWhenTokenMissing(t *testing.T) {
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
 		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 	}
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) { return nil, nil }
+	deps.getToken = func(string, string) (*cache.SSOToken, error) { return nil, nil }
 
 	_, err := getCachedSSOFlowWithDeps(validOrg(), deps)
 	if err == nil || !strings.Contains(err.Error(), "Unable to get sso token") {
@@ -247,8 +256,8 @@ func TestGetCachedSSOFlowReturnsErrorWhenTokenMissing(t *testing.T) {
 func TestLoginReturnsRegisterClientError(t *testing.T) {
 	home := setupAppConfig(t)
 	deps := defaultFakeLoginDeps(home)
-	deps.newOIDCClient = func(*session.Session, string) oidcClientAPI {
-		return &fakeOIDCClient{registerErr: errors.New("register failed")}
+	deps.newOIDCClient = func(context.Context, string) (oidcClientAPI, error) {
+		return &fakeOIDCClient{registerErr: errors.New("register failed")}, nil
 	}
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) { return nil, nil }
 
@@ -262,24 +271,24 @@ func TestLoginReturnsCreateTokenError(t *testing.T) {
 	home := setupAppConfig(t)
 	now := time.Now()
 	deps := defaultFakeLoginDeps(home)
-	deps.newOIDCClient = func(*session.Session, string) oidcClientAPI {
+	deps.newOIDCClient = func(context.Context, string) (oidcClientAPI, error) {
 		return &fakeOIDCClient{
 			registerOut: &ssooidc.RegisterClientOutput{
-				ClientId:              aws.String("id"),
-				ClientSecret:          aws.String("secret"),
-				ClientSecretExpiresAt: aws.Int64(now.Add(time.Hour).Unix()),
+				ClientId:              awsv2.String("id"),
+				ClientSecret:          awsv2.String("secret"),
+				ClientSecretExpiresAt: now.Add(time.Hour).Unix(),
 			},
 			startOut: &ssooidc.StartDeviceAuthorizationOutput{
-				UserCode:                aws.String("ABCD"),
-				VerificationUriComplete: aws.String("https://verify"),
-				Interval:                aws.Int64(1),
-				DeviceCode:              aws.String("device"),
+				UserCode:                awsv2.String("ABCD"),
+				VerificationUriComplete: awsv2.String("https://verify"),
+				Interval:                1,
+				DeviceCode:              awsv2.String("device"),
 			},
 			tokenErrs: []error{errors.New("token failed")},
-		}
+		}, nil
 	}
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) { return nil, nil }
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) { return nil, nil }
+	deps.getToken = func(string, string) (*cache.SSOToken, error) { return nil, nil }
 	deps.sleep = func(time.Duration) {}
 
 	_, err := loginWithDeps(validOrg(), true, false, &bus.Bus{Channel: make(chan bus.BusMsg, 10)}, deps)
@@ -294,7 +303,7 @@ func TestLoginReturnsConfigFileErrorAfterAuth(t *testing.T) {
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
 		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 	}
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) {
+	deps.getToken = func(string, string) (*cache.SSOToken, error) {
 		return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 	}
 	deps.newConfigFile = func(string) (*files.AWSFile, error) { return nil, errors.New("config file failed") }
@@ -309,18 +318,26 @@ func TestPopulateRolesCreatesConfigSectionsForPagedAccountsAndRoles(t *testing.T
 	setupAppConfig(t)
 	cfgFile := newAWSFile(t)
 	ssoClient := &fakeSSOClient{
-		listAccountsOutputs: []*awssso.ListAccountsOutput{
+		listAccountsOutputs: []*sso.ListAccountsOutput{
 			{
-				AccountList: []*awssso.AccountInfo{{AccountId: aws.String("111111111111"), AccountName: aws.String("Dev Account")}},
-				NextToken:   aws.String("next"),
+				AccountList: []ssotypes.AccountInfo{{AccountId: awsv2.String("111111111111"), AccountName: awsv2.String("Dev Account")}},
+				NextToken:   awsv2.String("next"),
 			},
 			{
-				AccountList: []*awssso.AccountInfo{{AccountId: aws.String("222222222222"), AccountName: aws.String("Prod Account")}},
+				AccountList: []ssotypes.AccountInfo{{AccountId: awsv2.String("222222222222"), AccountName: awsv2.String("Prod Account")}},
 			},
 		},
-		listAccountRoles: map[string][]*awssso.ListAccountRolesOutput{
-			"111111111111": {{RoleList: []*awssso.RoleInfo{{RoleName: aws.String("Admin")}}}},
-			"222222222222": {{RoleList: []*awssso.RoleInfo{{RoleName: aws.String("ReadOnly")}}}},
+		listAccountRoles: map[string][]*sso.ListAccountRolesOutput{
+			"111111111111": {
+				{
+					RoleList:  []ssotypes.RoleInfo{{RoleName: awsv2.String("Admin")}},
+					NextToken: awsv2.String("role-next"),
+				},
+				{
+					RoleList: []ssotypes.RoleInfo{{RoleName: awsv2.String("Audit")}},
+				},
+			},
+			"222222222222": {{RoleList: []ssotypes.RoleInfo{{RoleName: awsv2.String("ReadOnly")}}}},
 		},
 	}
 	flow := newTestFlow(cfgFile, ssoClient)
@@ -330,7 +347,10 @@ func TestPopulateRolesCreatesConfigSectionsForPagedAccountsAndRoles(t *testing.T
 		t.Fatalf("PopulateRoles() error = %v", err)
 	}
 	sort.Strings(got)
-	want := []string{"dev:Dev-Account:Admin", "dev:Prod-Account:ReadOnly"}
+	want := []string{"dev:Dev-Account:Admin", "dev:Dev-Account:Audit", "dev:Prod-Account:ReadOnly"}
+	if len(got) != len(want) {
+		t.Fatalf("PopulateRoles() len = %d, want %d (%v)", len(got), len(want), got)
+	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("PopulateRoles()[%d] = %q, want %q", i, got[i], want[i])
@@ -357,13 +377,13 @@ func TestGetCredentialsWritesTemporaryProfiles(t *testing.T) {
 	_, _ = section.NewKey("sso_account_id", "111111111111")
 	_, _ = section.NewKey("sso_role_name", "Admin")
 	ssoClient := &fakeSSOClient{
-		roleCredsByRole: map[string]*awssso.GetRoleCredentialsOutput{
+		roleCredsByRole: map[string]*sso.GetRoleCredentialsOutput{
 			"Admin": {
-				RoleCredentials: &awssso.RoleCredentials{
-					AccessKeyId:     aws.String("AKIA"),
-					SecretAccessKey: aws.String("secret"),
-					SessionToken:    aws.String("token"),
-					Expiration:      aws.Int64(time.Now().Add(time.Hour).UnixMilli()),
+				RoleCredentials: &ssotypes.RoleCredentials{
+					AccessKeyId:     awsv2.String("AKIA"),
+					SecretAccessKey: awsv2.String("secret"),
+					SessionToken:    awsv2.String("token"),
+					Expiration:      time.Now().Add(time.Hour).UnixMilli(),
 				},
 			},
 		},
@@ -427,7 +447,7 @@ func TestGetCachedSSOFlowHappyPath(t *testing.T) {
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
 		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 	}
-	deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) {
+	deps.getToken = func(string, string) (*cache.SSOToken, error) {
 		return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 	}
 
@@ -460,7 +480,7 @@ func TestLoginWrapperUsesFactoryDeps(t *testing.T) {
 		deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
 			return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 		}
-		deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) {
+		deps.getToken = func(string, string) (*cache.SSOToken, error) {
 			return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 		}
 		return deps
@@ -481,7 +501,7 @@ func TestGetCachedSSOFlowWrapperUsesFactoryDeps(t *testing.T) {
 		deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
 			return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 		}
-		deps.getToken = func(string, *session.Session, string) (*cache.SSOToken, error) {
+		deps.getToken = func(string, string) (*cache.SSOToken, error) {
 			return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
 		}
 		return deps
@@ -495,18 +515,17 @@ func TestGetCachedSSOFlowWrapperUsesFactoryDeps(t *testing.T) {
 
 func defaultFakeLoginDeps(home string) loginDeps {
 	return loginDeps{
-		newSession: func() *session.Session { return &session.Session{} },
-		newOIDCClient: func(*session.Session, string) oidcClientAPI {
-			return &fakeOIDCClient{}
+		newOIDCClient: func(context.Context, string) (oidcClientAPI, error) {
+			return &fakeOIDCClient{}, nil
 		},
-		newSSOClient: func(*session.Session, string) ssoClientAPI {
-			return &fakeSSOClient{}
+		newSSOClient: func(context.Context, string) (ssoClientAPI, error) {
+			return &fakeSSOClient{}, nil
 		},
 		getClientCreds: func(string) (*cache.SSOClientCredentials, error) { return nil, nil },
 		saveClientCreds: func(*cache.SSOClientCredentials, *string) error {
 			return nil
 		},
-		getToken: func(string, *session.Session, string) (*cache.SSOToken, error) { return nil, nil },
+		getToken:  func(string, string) (*cache.SSOToken, error) { return nil, nil },
 		saveToken: func(*cache.SSOToken, string) error { return nil },
 		newConfigFile: func(string) (*files.AWSFile, error) {
 			return &files.AWSFile{File: ini.Empty(), Path: filepath.Join(home, ".aws", "config")}, nil

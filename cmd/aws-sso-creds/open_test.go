@@ -1,17 +1,20 @@
 package awsssocreds
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	"github.com/aws/aws-sdk-go/aws"
-	awssso "github.com/aws/aws-sdk-go/service/sso"
+	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+	awssso "github.com/aws/aws-sdk-go-v2/service/sso"
+	awsssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
 	"gopkg.in/ini.v1"
 )
 
@@ -93,21 +96,23 @@ func TestOpenConsoleWithDepsBuildsSigninURL(t *testing.T) {
 	_, _ = section.NewKey("sso_start_url", "https://dev.awsapps.com/start")
 	_, _ = section.NewKey("region", "us-east-1")
 
+	var federatedURL string
 	var opened string
 	err := openConsoleWithDeps("dev:Admin", 3600, openDeps{
 		newConfigFile: func(string) (*files.AWSFile, error) { return cfgFile, nil },
 		getCachedFlow: func(config.Organization) (cachedFlow, error) {
 			return fakeCachedFlow{
 				creds: &awssso.GetRoleCredentialsOutput{
-					RoleCredentials: &awssso.RoleCredentials{
-						AccessKeyId:     aws.String("AKIA"),
-						SecretAccessKey: aws.String("secret"),
-						SessionToken:    aws.String("token"),
+					RoleCredentials: &awsssotypes.RoleCredentials{
+						AccessKeyId:     awsv2.String("AKIA"),
+						SecretAccessKey: awsv2.String("secret"),
+						SessionToken:    awsv2.String("token"),
 					},
 				},
 			}, nil
 		},
-		httpGet: func(string) (*http.Response, error) {
+		httpGet: func(raw string) (*http.Response, error) {
+			federatedURL = raw
 			return &http.Response{
 				Body: io.NopCloser(strings.NewReader(`{"SigninToken":"signin-token"}`)),
 			}, nil
@@ -119,6 +124,34 @@ func TestOpenConsoleWithDepsBuildsSigninURL(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("openConsoleWithDeps() error = %v", err)
+	}
+	if !strings.Contains(federatedURL, "Action=getSigninToken") {
+		t.Fatalf("federated URL = %q, want getSigninToken action", federatedURL)
+	}
+	parsedURL, err := url.Parse(federatedURL)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	sessionValue := parsedURL.Query().Get("Session")
+	if sessionValue == "" {
+		t.Fatalf("federated URL = %q, want Session parameter", federatedURL)
+	}
+	decodedSession, err := url.QueryUnescape(sessionValue)
+	if err != nil {
+		t.Fatalf("QueryUnescape() error = %v", err)
+	}
+	var sessionPayload map[string]string
+	if err := json.Unmarshal([]byte(decodedSession), &sessionPayload); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if sessionPayload["sessionId"] != "AKIA" {
+		t.Fatalf("sessionId = %q, want %q", sessionPayload["sessionId"], "AKIA")
+	}
+	if sessionPayload["sessionKey"] != "secret" {
+		t.Fatalf("sessionKey = %q, want %q", sessionPayload["sessionKey"], "secret")
+	}
+	if sessionPayload["sessionToken"] != "token" {
+		t.Fatalf("sessionToken = %q, want %q", sessionPayload["sessionToken"], "token")
 	}
 	if !strings.Contains(opened, "SigninToken=signin-token") {
 		t.Fatalf("opened URL = %q, want signin token", opened)
@@ -140,10 +173,10 @@ func TestOpenConsoleWithDepsReturnsBrowserOpenError(t *testing.T) {
 		getCachedFlow: func(config.Organization) (cachedFlow, error) {
 			return fakeCachedFlow{
 				creds: &awssso.GetRoleCredentialsOutput{
-					RoleCredentials: &awssso.RoleCredentials{
-						AccessKeyId:     aws.String("AKIA"),
-						SecretAccessKey: aws.String("secret"),
-						SessionToken:    aws.String("token"),
+					RoleCredentials: &awsssotypes.RoleCredentials{
+						AccessKeyId:     awsv2.String("AKIA"),
+						SecretAccessKey: awsv2.String("secret"),
+						SessionToken:    awsv2.String("token"),
 					},
 				},
 			}, nil
@@ -175,10 +208,10 @@ func TestOpenConsoleWithDepsReturnsHTTPError(t *testing.T) {
 		getCachedFlow: func(config.Organization) (cachedFlow, error) {
 			return fakeCachedFlow{
 				creds: &awssso.GetRoleCredentialsOutput{
-					RoleCredentials: &awssso.RoleCredentials{
-						AccessKeyId:     aws.String("AKIA"),
-						SecretAccessKey: aws.String("secret"),
-						SessionToken:    aws.String("token"),
+					RoleCredentials: &awsssotypes.RoleCredentials{
+						AccessKeyId:     awsv2.String("AKIA"),
+						SecretAccessKey: awsv2.String("secret"),
+						SessionToken:    awsv2.String("token"),
 					},
 				},
 			}, nil
@@ -206,10 +239,10 @@ func TestOpenConsoleWithDepsReturnsJSONError(t *testing.T) {
 		getCachedFlow: func(config.Organization) (cachedFlow, error) {
 			return fakeCachedFlow{
 				creds: &awssso.GetRoleCredentialsOutput{
-					RoleCredentials: &awssso.RoleCredentials{
-						AccessKeyId:     aws.String("AKIA"),
-						SecretAccessKey: aws.String("secret"),
-						SessionToken:    aws.String("token"),
+					RoleCredentials: &awsssotypes.RoleCredentials{
+						AccessKeyId:     awsv2.String("AKIA"),
+						SecretAccessKey: awsv2.String("secret"),
+						SessionToken:    awsv2.String("token"),
 					},
 				},
 			}, nil
