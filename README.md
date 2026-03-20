@@ -67,7 +67,11 @@ Download the binary based on your OS in [The releases section](https://github.co
 
 - Go 1.17+
 
-Run `go install github.com/JorgeReus/aws-sso-creds@latest`
+Release PRs keep this version updated automatically:
+
+<!-- x-release-please-start-version -->
+Run `go install github.com/JorgeReus/aws-sso-creds@1.1.0`
+<!-- x-release-please-end -->
 
 <!-- USAGE EXAMPLES -->
 
@@ -99,6 +103,8 @@ Flags:
 
 Use "aws-sso-creds [command] --help" for more information about a command.
 ```
+
+When you run `aws-sso-creds --help` or `aws-sso-creds help`, the root help output also shows the build version. Local builds without release metadata show `Version: dirty`; tagged release binaries show the release tag.
 
 ## Configuration
 
@@ -134,14 +140,14 @@ You can create or update this config interactively with:
 aws-sso-creds init
 ```
 
-The command ensures the config exists and prompts for:
+`init` creates or updates `~/.config/aws-sso-creds.toml` interactively. It guides you through:
 
 - organization name
 - AWS start URL
 - prefix
 - region
 
-The color entries must be defined in `hex` notation
+The command also validates that the color entries are written in `hex` notation, so the generated config stays usable without manual cleanup.
 
 <!-- CONTRIBUTING -->
 
