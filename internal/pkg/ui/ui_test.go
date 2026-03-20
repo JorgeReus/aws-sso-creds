@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"fmt"
 	"os/user"
 	"reflect"
 	"strings"
@@ -149,20 +148,23 @@ func TestModelUpdateQuitsOnFinishedSpinnerTick(t *testing.T) {
 	}
 }
 
-func TestHandleBusMessagePrintsInfoMessage(t *testing.T) {
+func TestHandleBusMessageDoesNotPrintInfoMessageDirectly(t *testing.T) {
 	resetUIStateForTest()
 	setupUIConfig(t)
 
-	var printed string
+	printCalls := 0
 	handleBusMessage(bus.BusMsg{MsgType: bus.MSG_TYPE_INFO, Contents: "hello"}, uiDeps{
 		println: func(args ...interface{}) (int, error) {
-			printed = args[0].(string)
+			printCalls++
 			return 0, nil
 		},
 		sleep: func(time.Duration) {},
 	})
-	if !strings.Contains(printed, "hello") {
-		t.Fatalf("printed = %q, want info message", printed)
+	if printCalls != 0 {
+		t.Fatalf("printCalls = %d, want 0", printCalls)
+	}
+	if !strings.Contains(renderedOutputLines(), "hello") {
+		t.Fatalf("renderedOutputLines() = %q, want info message", renderedOutputLines())
 	}
 }
 
@@ -170,19 +172,15 @@ func TestHandleBusMessageSetsApprovalState(t *testing.T) {
 	resetUIStateForTest()
 	setupUIConfig(t)
 
-	var printed string
 	handleBusMessage(bus.BusMsg{MsgType: bus.MSG_TYPE_ERR, Contents: "open browser"}, uiDeps{
-		println: func(args ...interface{}) (int, error) {
-			printed = args[0].(string)
-			return 0, nil
-		},
+		println: func(...interface{}) (int, error) { return 0, nil },
 		sleep: func(time.Duration) {},
 	})
 	if !needsUserApproval {
 		t.Fatal("needsUserApproval = false, want true")
 	}
-	if !strings.Contains(printed, "Warning: open browser") {
-		t.Fatalf("printed = %q, want warning message", printed)
+	if !strings.Contains(renderedOutputLines(), "Warning: open browser") {
+		t.Fatalf("renderedOutputLines() = %q, want warning message", renderedOutputLines())
 	}
 }
 
@@ -190,7 +188,7 @@ func TestHandleFlowWithDepsPopulatesRolesAndCredentials(t *testing.T) {
 	resetUIStateForTest()
 	setupUIConfig(t)
 
-	var lines []string
+	printCalls := 0
 	handleFlowWithDeps(UI{
 		CreateStatic:  true,
 		PopulateRoles: true,
@@ -211,7 +209,7 @@ func TestHandleFlowWithDepsPopulatesRolesAndCredentials(t *testing.T) {
 		},
 		configFileSSOEmpty: func(string, string) bool { return true },
 		println: func(args ...interface{}) (int, error) {
-			lines = append(lines, strings.TrimSpace(fmt.Sprint(args...)))
+			printCalls++
 			return 0, nil
 		},
 		sleep: func(time.Duration) {},
@@ -219,8 +217,15 @@ func TestHandleFlowWithDepsPopulatesRolesAndCredentials(t *testing.T) {
 	if !hasFinished {
 		t.Fatal("hasFinished = false, want true")
 	}
-	if len(lines) == 0 {
-		t.Fatal("expected printed output")
+	if printCalls != 0 {
+		t.Fatalf("printCalls = %d, want 0", printCalls)
+	}
+	rendered := renderedOutputLines()
+	if !strings.Contains(rendered, "Synced roles in ~/.aws/config") {
+		t.Fatalf("renderedOutputLines() = %q, want roles sync message", rendered)
+	}
+	if !strings.Contains(rendered, "Added temporary credentials in ~/.aws/credentials") {
+		t.Fatalf("renderedOutputLines() = %q, want credentials message", rendered)
 	}
 }
 
@@ -228,7 +233,6 @@ func TestHandleFlowWithDepsPrintsLoginError(t *testing.T) {
 	resetUIStateForTest()
 	setupUIConfig(t)
 
-	var printed string
 	handleFlowWithDeps(UI{Org: config.Organization{Name: "dev"}}, uiDeps{
 		currentUser:           func() (*user.User, error) { return &user.User{Uid: "1000"}, nil },
 		validateSuperuserFile: func(string, *user.User) string { return "" },
@@ -237,14 +241,11 @@ func TestHandleFlowWithDepsPrintsLoginError(t *testing.T) {
 			return nil, errors.New("boom")
 		},
 		configFileSSOEmpty: func(string, string) bool { return false },
-		println: func(args ...interface{}) (int, error) {
-			printed = args[0].(string)
-			return 0, nil
-		},
+		println:            func(...interface{}) (int, error) { return 0, nil },
 		sleep: func(time.Duration) {},
 	})
-	if !strings.Contains(printed, "Error: boom") {
-		t.Fatalf("printed = %q, want login error", printed)
+	if !strings.Contains(renderedOutputLines(), "Error: boom") {
+		t.Fatalf("renderedOutputLines() = %q, want login error", renderedOutputLines())
 	}
 }
 
