@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.3.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.0...v1.3.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* build metadata was always dirty ([ae3579b](https://github.com/JorgeReus/aws-sso-creds/commit/ae3579bd2b1e01c267c00293753a7e813da454bf))
+
 ## [1.3.0](https://github.com/JorgeReus/aws-sso-creds/compare/1.2.0...v1.3.0) (2026-03-20)
 
 
