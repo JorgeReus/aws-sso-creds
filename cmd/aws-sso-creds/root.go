@@ -1,6 +1,7 @@
 package awsssocreds
 
 import (
+	_ "embed"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -17,6 +18,9 @@ var version = "dirty"
 var selectedOrg config.Organization
 var rootDepsFactory = defaultRootDeps
 var readBuildInfo = debug.ReadBuildInfo
+
+//go:embed release_version.txt
+var embeddedReleaseVersion string
 
 type rootDeps struct {
 	initConfig func(home, configPath string) error
@@ -111,8 +115,12 @@ func buildVersion() string {
 		return version
 	}
 
+	releaseVersion := normalizedReleaseVersion()
 	info, ok := readBuildInfo()
 	if !ok {
+		if releaseVersion != "" {
+			return releaseVersion
+		}
 		return version
 	}
 
@@ -120,6 +128,21 @@ func buildVersion() string {
 	case "", "(devel)":
 		return "devel"
 	default:
-		return strings.TrimPrefix(info.Main.Version, "v")
+		mainVersion := strings.TrimPrefix(info.Main.Version, "v")
+		if strings.HasPrefix(mainVersion, "0.0.0-") && releaseVersion != "" {
+			return releaseVersion
+		}
+		return mainVersion
 	}
+}
+
+func normalizedReleaseVersion() string {
+	for _, line := range strings.Split(embeddedReleaseVersion, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "<!--") {
+			continue
+		}
+		return strings.TrimPrefix(line, "v")
+	}
+	return ""
 }

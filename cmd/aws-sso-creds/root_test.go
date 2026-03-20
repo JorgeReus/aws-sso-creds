@@ -66,14 +66,41 @@ func TestDefaultVersionIsDirty(t *testing.T) {
 }
 
 func TestBuildVersionUsesBuildInfoModuleVersionWhenLdflagsUnset(t *testing.T) {
+	origVersion := version
 	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	origReleaseVersion := embeddedReleaseVersion
+	defer func() {
+		version = origVersion
+		readBuildInfo = origReadBuildInfo
+		embeddedReleaseVersion = origReleaseVersion
+	}()
+	version = "dirty"
 	readBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{Main: debug.Module{Version: "v1.3.0"}}, true
 	}
 
 	if got := buildVersion(); got != "1.3.0" {
 		t.Fatalf("buildVersion() = %q, want %q", got, "1.3.0")
+	}
+}
+
+func TestBuildVersionUsesEmbeddedReleaseVersionForPseudoVersions(t *testing.T) {
+	origVersion := version
+	origReadBuildInfo := readBuildInfo
+	origReleaseVersion := embeddedReleaseVersion
+	defer func() {
+		version = origVersion
+		readBuildInfo = origReadBuildInfo
+		embeddedReleaseVersion = origReleaseVersion
+	}()
+	version = "dirty"
+	embeddedReleaseVersion = "1.3.1"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Main: debug.Module{Version: "0.0.0-20260320055032-ea193b1e49c4"}}, true
+	}
+
+	if got := buildVersion(); got != "1.3.1" {
+		t.Fatalf("buildVersion() = %q, want %q", got, "1.3.1")
 	}
 }
 
