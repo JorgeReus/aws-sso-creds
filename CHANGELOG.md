@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.3.4](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.3...1.3.4) (2026-03-20)
+
+
+### Bug Fixes
+
+* create aws config directory before loading files ([91099af](https://github.com/JorgeReus/aws-sso-creds/commit/91099af5ca8a1ac50ce8db8a6d1fb110ed6412d0))
+
 ## [1.3.3](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.2...1.3.3) (2026-03-20)
 
 

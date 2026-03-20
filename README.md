@@ -70,7 +70,7 @@ Download the binary based on your OS in [The releases section](https://github.co
 Release PRs keep this version updated automatically:
 
 <!-- x-release-please-start-version -->
-Run `go install github.com/JorgeReus/aws-sso-creds@1.3.3`
+Run `go install github.com/JorgeReus/aws-sso-creds@1.3.4`
 <!-- x-release-please-end -->
 
 ### With Nix
