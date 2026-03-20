@@ -75,6 +75,7 @@ jobs:
   commitlint:
     name: Conventional Commits
     runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
 
     steps:
       - name: Lint PR commits
