@@ -3,6 +3,7 @@ package awsssocreds
 import (
 	"bytes"
 	"errors"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestRootHelpShowsVersion(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "Version: "+version) {
+	if !strings.Contains(out.String(), "Version: "+buildVersion()) {
 		t.Fatalf("help output = %q, want version line", out.String())
 	}
 }
@@ -47,14 +48,32 @@ func TestSubcommandHelpDoesNotShowVersion(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if strings.Contains(out.String(), "Version: "+version) {
+	if strings.Contains(out.String(), "Version: "+buildVersion()) {
 		t.Fatalf("help output = %q, did not want version line", out.String())
 	}
 }
 
 func TestDefaultVersionIsDirty(t *testing.T) {
-	if version != "dirty" {
-		t.Fatalf("version = %q, want dirty for default builds", version)
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, true
+	}
+
+	if got := buildVersion(); got != "devel" {
+		t.Fatalf("buildVersion() = %q, want %q", got, "devel")
+	}
+}
+
+func TestBuildVersionUsesBuildInfoModuleVersionWhenLdflagsUnset(t *testing.T) {
+	origReadBuildInfo := readBuildInfo
+	defer func() { readBuildInfo = origReadBuildInfo }()
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Main: debug.Module{Version: "v1.3.0"}}, true
+	}
+
+	if got := buildVersion(); got != "1.3.0" {
+		t.Fatalf("buildVersion() = %q, want %q", got, "1.3.0")
 	}
 }
 

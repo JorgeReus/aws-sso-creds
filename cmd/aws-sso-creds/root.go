@@ -2,6 +2,8 @@ package awsssocreds
 
 import (
 	"fmt"
+	"runtime/debug"
+	"strings"
 
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
@@ -14,6 +16,7 @@ var configPath, home string
 var version = "dirty"
 var selectedOrg config.Organization
 var rootDepsFactory = defaultRootDeps
+var readBuildInfo = debug.ReadBuildInfo
 
 type rootDeps struct {
 	initConfig func(home, configPath string) error
@@ -33,7 +36,7 @@ func defaultRootDeps() rootDeps {
 
 func newRootCmd(deps rootDeps) *cobra.Command {
 	cobra.AddTemplateFunc("buildVersion", func() string {
-		return version
+		return buildVersion()
 	})
 
 	cmd := &cobra.Command{
@@ -100,5 +103,23 @@ func Execute() {
 
 	if err := rootCmd.Execute(); err != nil {
 		panic(fmt.Errorf("There was an error running aws-sso-creds '%s'", err))
+	}
+}
+
+func buildVersion() string {
+	if version != "dirty" {
+		return version
+	}
+
+	info, ok := readBuildInfo()
+	if !ok {
+		return version
+	}
+
+	switch info.Main.Version {
+	case "", "(devel)":
+		return "devel"
+	default:
+		return strings.TrimPrefix(info.Main.Version, "v")
 	}
 }
