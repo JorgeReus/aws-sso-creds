@@ -57,6 +57,8 @@ func TestStartWithDepsInitializesAndRunsProgram(t *testing.T) {
 		configFileSSOEmpty: func(string, string) bool { return false },
 		println:            func(...interface{}) (int, error) { return 0, nil },
 		sleep:              func(time.Duration) {},
+		startSubscriber:    func(uiDeps) {},
+		startFlow:          func(UI, uiDeps) {},
 	})
 	if err != nil {
 		t.Fatalf("startWithDeps() error = %v", err)
@@ -73,7 +75,7 @@ func TestModelViewIncludesDisplayMessage(t *testing.T) {
 	resetUIStateForTest()
 	setupUIConfig(t)
 
-	displayMsg = "continue"
+	setDisplayMsg("continue")
 	view := initialModel().View()
 	if !strings.Contains(view, "continue") {
 		t.Fatalf("View() = %q, want display message", view)
@@ -103,6 +105,8 @@ func TestStartWithDepsReturnsCurrentUserError(t *testing.T) {
 		configFileSSOEmpty:    func(string, string) bool { return false },
 		println:               func(...interface{}) (int, error) { return 0, nil },
 		sleep:                 func(time.Duration) {},
+		startSubscriber:       func(uiDeps) {},
+		startFlow:             func(UI, uiDeps) {},
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("startWithDeps() error = %v, want %v", err, wantErr)
@@ -111,7 +115,7 @@ func TestStartWithDepsReturnsCurrentUserError(t *testing.T) {
 
 func TestModelUpdateSendsContinueMessageOnEnterWhenApprovalNeeded(t *testing.T) {
 	resetUIStateForTest()
-	needsUserApproval = true
+	needsUserApproval.Store(true)
 	msgBus = &bus.Bus{Channel: make(chan bus.BusMsg, 1)}
 
 	m := initialModel()
@@ -137,7 +141,7 @@ func TestModelUpdateQuitsOnCtrlC(t *testing.T) {
 
 func TestModelUpdateQuitsOnFinishedSpinnerTick(t *testing.T) {
 	resetUIStateForTest()
-	hasFinished = true
+	hasFinished.Store(true)
 
 	_, cmd := initialModel().Update(spinner.TickMsg{})
 	if cmd == nil {
@@ -174,9 +178,9 @@ func TestHandleBusMessageSetsApprovalState(t *testing.T) {
 
 	handleBusMessage(bus.BusMsg{MsgType: bus.MSG_TYPE_ERR, Contents: "open browser"}, uiDeps{
 		println: func(...interface{}) (int, error) { return 0, nil },
-		sleep: func(time.Duration) {},
+		sleep:   func(time.Duration) {},
 	})
-	if !needsUserApproval {
+	if !needsUserApproval.Load() {
 		t.Fatal("needsUserApproval = false, want true")
 	}
 	if !strings.Contains(renderedOutputLines(), "Warning: open browser") {
@@ -214,7 +218,7 @@ func TestHandleFlowWithDepsPopulatesRolesAndCredentials(t *testing.T) {
 		},
 		sleep: func(time.Duration) {},
 	})
-	if !hasFinished {
+	if !hasFinished.Load() {
 		t.Fatal("hasFinished = false, want true")
 	}
 	if printCalls != 0 {
@@ -242,7 +246,7 @@ func TestHandleFlowWithDepsPrintsLoginError(t *testing.T) {
 		},
 		configFileSSOEmpty: func(string, string) bool { return false },
 		println:            func(...interface{}) (int, error) { return 0, nil },
-		sleep: func(time.Duration) {},
+		sleep:              func(time.Duration) {},
 	})
 	if !strings.Contains(renderedOutputLines(), "Error: boom") {
 		t.Fatalf("renderedOutputLines() = %q, want login error", renderedOutputLines())
@@ -265,6 +269,8 @@ func TestStartWrapperUsesFactoryDeps(t *testing.T) {
 			configFileSSOEmpty:    func(string, string) bool { return false },
 			println:               func(...interface{}) (int, error) { return 0, nil },
 			sleep:                 func(time.Duration) {},
+			startSubscriber:       func(uiDeps) {},
+			startFlow:             func(UI, uiDeps) {},
 		}
 	}
 
@@ -291,11 +297,13 @@ func TestHandleFlowWrapperUsesFactoryDeps(t *testing.T) {
 			configFileSSOEmpty:    func(string, string) bool { return false },
 			println:               func(...interface{}) (int, error) { return 0, nil },
 			sleep:                 func(time.Duration) {},
+			startSubscriber:       func(uiDeps) {},
+			startFlow:             func(UI, uiDeps) { hasFinished.Store(true) },
 		}
 	}
 
 	(&UI{Org: config.Organization{Name: "dev"}}).handleFlow()
-	if !hasFinished {
+	if !hasFinished.Load() {
 		t.Fatal("hasFinished = false, want true")
 	}
 }
