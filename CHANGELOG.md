@@ -1,4 +1,23 @@
 <a name="unreleased"></a>
+## [1.4.0](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.1...1.4.0) (2026-03-20)
+
+
+### Features
+
+* Added code to comply with the IAM Identity Center Code Message ([37d6c06](https://github.com/JorgeReus/aws-sso-creds/commit/37d6c06e1f024f7b1f3ed350d850cfd4894375f0))
+* First commit ([6ca873c](https://github.com/JorgeReus/aws-sso-creds/commit/6ca873c3f1c82fe2049226f5eb19c4bb0df17cee))
+* Refactored fuzzyfinder previewer ([#3](https://github.com/JorgeReus/aws-sso-creds/issues/3)) ([0890e29](https://github.com/JorgeReus/aws-sso-creds/commit/0890e298f5eb3b947083e3378a69a3124787abcf))
+* Refactored using cobra ([#5](https://github.com/JorgeReus/aws-sso-creds/issues/5)) ([df9cebb](https://github.com/JorgeReus/aws-sso-creds/commit/df9cebb0358e81a699f1200b09d5957abc823221))
+
+
+### Bug Fixes
+
+* add release config updater ([9833db2](https://github.com/JorgeReus/aws-sso-creds/commit/9833db2c011716589e780cb957dac75ed15629c9))
+* build metadata was always dirty ([ae3579b](https://github.com/JorgeReus/aws-sso-creds/commit/ae3579bd2b1e01c267c00293753a7e813da454bf))
+* fix mesages ([fe1a060](https://github.com/JorgeReus/aws-sso-creds/commit/fe1a060020b05869109f90a6f231643618598fe7))
+* Fixed previewer bug that crashed whenever the files didn't existed ([1aae13e](https://github.com/JorgeReus/aws-sso-creds/commit/1aae13e22edbd8c1ead9f257193de9591599961b))
+* updating deps ([4ce1eb6](https://github.com/JorgeReus/aws-sso-creds/commit/4ce1eb6094960a0db2ae29ca5a71184969c70a8f))
+
 ## [1.3.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.0...v1.3.1) (2026-03-20)
 
 
