@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.1.2](https://github.com/JorgeReus/aws-sso-creds/compare/1.1.1...v1.1.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* updating deps ([4ce1eb6](https://github.com/JorgeReus/aws-sso-creds/commit/4ce1eb6094960a0db2ae29ca5a71184969c70a8f))
+
 ## [1.1.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.1.0...v1.1.1) (2026-03-20)
 
 
