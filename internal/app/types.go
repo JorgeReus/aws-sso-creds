@@ -17,6 +17,7 @@ type SSOFlow struct {
 	credentialsFile *files.AWSFile
 	ssoClient       ssoClientAPI
 	ssoRegion       *string
+	defaultRegion   *string
 	ssoStartUrl     *string
 	orgName         string
 	prefix          string

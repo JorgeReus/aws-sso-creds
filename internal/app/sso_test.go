@@ -356,6 +356,51 @@ func TestPopulateRolesCreatesConfigSectionsForPagedAccountsAndRoles(t *testing.T
 			t.Fatalf("PopulateRoles()[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
+
+	section, err := cfgFile.File.GetSection("profile dev:Dev-Account:Admin")
+	if err != nil {
+		t.Fatalf("GetSection() error = %v", err)
+	}
+	if got := section.Key("sso_region").String(); got != "us-east-1" {
+		t.Fatalf("sso_region = %q, want %q", got, "us-east-1")
+	}
+	if got := section.Key("region").String(); got != "us-east-1" {
+		t.Fatalf("region = %q, want %q", got, "us-east-1")
+	}
+}
+
+func TestPopulateRolesUsesDefaultRegionWhenProvided(t *testing.T) {
+	setupAppConfig(t)
+	cfgFile := newAWSFile(t)
+	ssoClient := &fakeSSOClient{
+		listAccountsOutputs: []*sso.ListAccountsOutput{
+			{
+				AccountList: []ssotypes.AccountInfo{{AccountId: awsv2.String("111111111111"), AccountName: awsv2.String("Dev Account")}},
+			},
+		},
+		listAccountRoles: map[string][]*sso.ListAccountRolesOutput{
+			"111111111111": {{RoleList: []ssotypes.RoleInfo{{RoleName: awsv2.String("Admin")}}}},
+		},
+	}
+	flow := newTestFlow(cfgFile, ssoClient)
+	defaultRegion := "eu-west-1"
+	flow.defaultRegion = &defaultRegion
+
+	_, err := flow.PopulateRoles()
+	if err != nil {
+		t.Fatalf("PopulateRoles() error = %v", err)
+	}
+
+	section, err := cfgFile.File.GetSection("profile dev:Dev-Account:Admin")
+	if err != nil {
+		t.Fatalf("GetSection() error = %v", err)
+	}
+	if got := section.Key("sso_region").String(); got != "us-east-1" {
+		t.Fatalf("sso_region = %q, want %q", got, "us-east-1")
+	}
+	if got := section.Key("region").String(); got != "eu-west-1" {
+		t.Fatalf("region = %q, want %q", got, "eu-west-1")
+	}
 }
 
 func TestPopulateRolesReturnsListAccountsError(t *testing.T) {
@@ -557,23 +602,25 @@ func newAWSFile(t *testing.T) *files.AWSFile {
 func newTestFlow(cfgFile *files.AWSFile, client ssoClientAPI) *SSOFlow {
 	token := "token"
 	region := "us-east-1"
+	defaultRegion := "us-east-1"
 	startURL := "https://dev.awsapps.com/start"
 	return &SSOFlow{
-		accessToken: &token,
-		ssoClient:   client,
-		configFile:  cfgFile,
-		ssoRegion:   &region,
-		ssoStartUrl: &startURL,
-		orgName:     "dev",
-		prefix:      "dev",
+		accessToken:   &token,
+		ssoClient:     client,
+		configFile:    cfgFile,
+		ssoRegion:     &region,
+		defaultRegion: &defaultRegion,
+		ssoStartUrl:   &startURL,
+		orgName:       "dev",
+		prefix:        "dev",
 	}
 }
 
 func validOrg() config.Organization {
 	return config.Organization{
-		Name:   "dev",
-		Prefix: "dev",
-		URL:    "https://dev.awsapps.com/start",
-		Region: "us-east-1",
+		Name:      "dev",
+		Prefix:    "dev",
+		URL:       "https://dev.awsapps.com/start",
+		SSORegion: "us-east-1",
 	}
 }

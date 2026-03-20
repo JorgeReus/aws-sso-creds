@@ -158,19 +158,25 @@ spinner_color = "#42f551"
 [organizations.org1]
 url = "https://org1.awsapps.com/start"
 prefix = "org1"
-region = "us-east-1"
+sso_region = "us-east-1"
+default_region = "us-west-2"
 
 [organizations.org2]
 url = "https://org2.awsapps.com/start"
 prefix = "org2"
-region = "us-west-2"
+sso_region = "us-west-2"
 ```
 
 Each organization entry must have:
 
 - url: The awsapps URL to interact with the AWS SSO/Identity Center Org
 - prefix: A prefix to identify profiles in the aws local config files
-- region: The region of the AWS SSO/Identity Center Org
+- sso_region: The region of the AWS SSO/Identity Center Org
+
+Optional organization fields:
+
+- default_region: The default AWS region written to generated profiles. If omitted, it falls back to `sso_region`.
+- region: Legacy compatibility fallback for older configs. If `sso_region` is missing, `region` is treated as the SSO region.
 
 You can create or update this config interactively with:
 
@@ -183,7 +189,8 @@ aws-sso-creds init
 - organization name
 - AWS start URL
 - prefix
-- region
+- SSO region
+- default AWS region, optional
 
 The command also validates that the color entries are written in `hex` notation, so the generated config stays usable without manual cleanup.
 

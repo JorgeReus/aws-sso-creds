@@ -27,10 +27,26 @@ var c *Config
 var lock = &sync.Mutex{}
 
 type Organization struct {
-	Name   string `validate:"required"`
-	Prefix string `validate:"required" mapstructure:"prefix"`
-	URL    string `validate:"required" mapstructure:"url"`
-	Region string `validate:"required" mapstructure:"region"`
+	Name          string `validate:"required"`
+	Prefix        string `validate:"required" mapstructure:"prefix"`
+	URL           string `validate:"required" mapstructure:"url"`
+	Region        string `mapstructure:"region"`
+	SSORegion     string `mapstructure:"sso_region"`
+	DefaultRegion string `mapstructure:"default_region"`
+}
+
+func (o Organization) EffectiveSSORegion() string {
+	if o.SSORegion != "" {
+		return o.SSORegion
+	}
+	return o.Region
+}
+
+func (o Organization) EffectiveDefaultRegion() string {
+	if o.DefaultRegion != "" {
+		return o.DefaultRegion
+	}
+	return o.EffectiveSSORegion()
 }
 
 func setDefaults() {
@@ -130,7 +146,13 @@ func UpsertOrganizationConfig(configPath string, org Organization) error {
 	orgPath := fmt.Sprintf("organizations.%s", org.Name)
 	tree.Set(fmt.Sprintf("%s.url", orgPath), org.URL)
 	tree.Set(fmt.Sprintf("%s.prefix", orgPath), org.Prefix)
-	tree.Set(fmt.Sprintf("%s.region", orgPath), org.Region)
+	tree.Delete(fmt.Sprintf("%s.region", orgPath))
+	tree.Delete(fmt.Sprintf("%s.sso_region", orgPath))
+	tree.Delete(fmt.Sprintf("%s.default_region", orgPath))
+	tree.Set(fmt.Sprintf("%s.sso_region", orgPath), org.EffectiveSSORegion())
+	if org.DefaultRegion != "" && org.DefaultRegion != org.EffectiveSSORegion() {
+		tree.Set(fmt.Sprintf("%s.default_region", orgPath), org.DefaultRegion)
+	}
 
 	return os.WriteFile(configPath, []byte(tree.String()), 0o644)
 }
@@ -161,6 +183,11 @@ func Init(home string, configPath string) error {
 		validate := validator.New()
 		if err := validate.Struct(&aux); err != nil {
 			return fmt.Errorf("Missing required attributes %v\n", err)
+		}
+		for name, org := range aux.Orgs {
+			if org.EffectiveSSORegion() == "" {
+				return fmt.Errorf("Missing required attributes organizations.%s.sso_region\n", name)
+			}
 		}
 		c = &aux
 	}
