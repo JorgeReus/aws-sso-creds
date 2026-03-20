@@ -1,3 +1,5 @@
+version: 2
+
 project_name: aws-sso-creds
 dist: dist
 before:
@@ -19,7 +21,8 @@ builds:
 archives:
   - format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     name_template: >-
       {{- .ProjectName }}_
       {{- if eq .Os "windows" }}{{- title "Windows" }}_
