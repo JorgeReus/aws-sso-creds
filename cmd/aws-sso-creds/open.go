@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"os"
 
-	sso "github.com/JorgeReus/aws-sso-creds/internal/app"
+	appsso "github.com/JorgeReus/aws-sso-creds/internal/app"
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	awssso "github.com/aws/aws-sdk-go/service/sso"
+	awssso "github.com/aws/aws-sdk-go-v2/service/sso"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +38,7 @@ func defaultOpenDeps() openDeps {
 		openConsole: func(roleName string, sessionDuration uint) error { return openConsoleWithDeps(roleName, sessionDuration, defaultOpenDeps()) },
 		newConfigFile: files.NewConfigFile,
 		getCachedFlow: func(org config.Organization) (cachedFlow, error) {
-			return sso.GetCachedSSOFlow(org)
+			return appsso.GetCachedSSOFlow(org)
 		},
 		httpGet: http.Get,
 		openURL: browser.OpenURL,
@@ -92,7 +92,7 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 		return err
 	}
 
-	session := sso.SessionUrlParams{
+	session := appsso.SessionUrlParams{
 		AccessKeyId:     *creds.RoleCredentials.AccessKeyId,
 		SecretAccessKey: *creds.RoleCredentials.SecretAccessKey,
 		SessionToken:    *creds.RoleCredentials.SessionToken,
@@ -103,11 +103,11 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 	}
 
 	url := fmt.Sprintf("%s?Action=getSigninToken&SessionDuration=%d&Session=%s",
-		sso.AWS_FEDERATED_URL, sessionDuration, encodedSession)
+		appsso.AWS_FEDERATED_URL, sessionDuration, encodedSession)
 
 	resp, err := deps.httpGet(url)
 	if err != nil {
-		return fmt.Errorf("Unable to login to AWS: %s with %s", sso.AWS_FEDERATED_URL, roleName)
+		return fmt.Errorf("Unable to login to AWS: %s with %s", appsso.AWS_FEDERATED_URL, roleName)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -115,12 +115,12 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 		return err
 	}
 
-	loginResponse := sso.LoginResponse{}
+	loginResponse := appsso.LoginResponse{}
 	err = json.Unmarshal(body, &loginResponse)
 	if err != nil {
 		return fmt.Errorf("Error parsing Login response: %s", err.Error())
 	}
-	login := sso.LoginUrlParams{
+	login := appsso.LoginUrlParams{
 		Issuer:      ssoStartUrl,
 		Destination: fmt.Sprintf("https://console.aws.amazon.com/console/home?region=%s", region),
 		SigninToken: loginResponse.SigninToken,

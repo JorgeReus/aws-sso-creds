@@ -1,20 +1,23 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
+	appconfig "github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/cache"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sso"
-	"github.com/aws/aws-sdk-go/service/ssooidc"
+	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+	awsv2config "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sso"
+	ssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
+	ssooidctypes "github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
 	"github.com/pkg/browser"
 )
 
@@ -26,14 +29,19 @@ var loginDepsFactory = defaultLoginDeps
 
 func defaultLoginDeps() loginDeps {
 	return loginDeps{
-		newSession: func() *session.Session {
-			return session.Must(session.NewSession())
+		newOIDCClient: func(ctx context.Context, region string) (oidcClientAPI, error) {
+			cfg, err := awsv2config.LoadDefaultConfig(ctx, awsv2config.WithRegion(region))
+			if err != nil {
+				return nil, err
+			}
+			return ssooidc.NewFromConfig(cfg), nil
 		},
-		newOIDCClient: func(sess *session.Session, region string) oidcClientAPI {
-			return ssooidc.New(sess, aws.NewConfig().WithRegion(region))
-		},
-		newSSOClient: func(sess *session.Session, region string) ssoClientAPI {
-			return sso.New(sess, aws.NewConfig().WithRegion(region))
+		newSSOClient: func(ctx context.Context, region string) (ssoClientAPI, error) {
+			cfg, err := awsv2config.LoadDefaultConfig(ctx, awsv2config.WithRegion(region))
+			if err != nil {
+				return nil, err
+			}
+			return sso.NewFromConfig(cfg), nil
 		},
 		getClientCreds: cache.GetSSOClientCreds,
 		saveClientCreds: func(creds *cache.SSOClientCredentials, region *string) error {
@@ -49,7 +57,7 @@ func defaultLoginDeps() loginDeps {
 }
 
 func Login(
-	org config.Organization,
+	org appconfig.Organization,
 	forceLogin, noBrowser bool,
 	msgBus *bus.Bus,
 ) (*SSOFlow, error) {
@@ -57,27 +65,42 @@ func Login(
 }
 
 func loginWithDeps(
-	org config.Organization,
+	org appconfig.Organization,
 	forceLogin, noBrowser bool,
 	msgBus *bus.Bus,
 	deps loginDeps,
 ) (*SSOFlow, error) {
-	sess := deps.newSession()
-	oidcClient := deps.newOIDCClient(sess, org.Region)
+	ctx := context.Background()
+	var oidcClient oidcClientAPI
+	getOIDCClient := func() (oidcClientAPI, error) {
+		if oidcClient != nil {
+			return oidcClient, nil
+		}
+		client, err := deps.newOIDCClient(ctx, org.Region)
+		if err != nil {
+			return nil, err
+		}
+		oidcClient = client
+		return oidcClient, nil
+	}
 	clientCredentials, err := deps.getClientCreds(org.Region)
 	if err != nil {
 		return nil, err
 	}
 
 	if clientCredentials == nil || forceLogin {
+		oidcClient, err := getOIDCClient()
+		if err != nil {
+			return nil, err
+		}
 		input := ssooidc.RegisterClientInput{ClientName: &clientName, ClientType: &clientType}
 
-		resp, err := oidcClient.RegisterClient(&input)
+		resp, err := oidcClient.RegisterClient(ctx, &input)
 		if err != nil {
 			return nil, err
 		}
 
-		tm := time.Unix(*resp.ClientSecretExpiresAt, 0)
+		tm := time.Unix(resp.ClientSecretExpiresAt, 0)
 		clientCredentials = &cache.SSOClientCredentials{
 			ClientId:     *resp.ClientId,
 			ClientSecret: *resp.ClientSecret,
@@ -88,18 +111,22 @@ func loginWithDeps(
 		}
 	}
 
-	ssoToken, err := deps.getToken(org.URL, sess, org.Region)
+	ssoToken, err := deps.getToken(org.URL, org.Region)
 	if err != nil {
 		return nil, err
 	}
 
 	if ssoToken == nil || forceLogin {
+		oidcClient, err := getOIDCClient()
+		if err != nil {
+			return nil, err
+		}
 		startDeviceAuthInput := ssooidc.StartDeviceAuthorizationInput{
 			ClientId:     &clientCredentials.ClientId,
 			ClientSecret: &clientCredentials.ClientSecret,
 			StartUrl:     &org.URL,
 		}
-		response, err := oidcClient.StartDeviceAuthorization(&startDeviceAuthInput)
+		response, err := oidcClient.StartDeviceAuthorization(ctx, &startDeviceAuthInput)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +149,7 @@ func loginWithDeps(
 		}
 
 		for {
-			deps.sleep(time.Second * time.Duration(*response.Interval))
+			deps.sleep(time.Second * time.Duration(response.Interval))
 			createTokenInput := ssooidc.CreateTokenInput{
 				ClientId:     &clientCredentials.ClientId,
 				ClientSecret: &clientCredentials.ClientSecret,
@@ -130,16 +157,12 @@ func loginWithDeps(
 				DeviceCode:   response.DeviceCode,
 				GrantType:    &grantType,
 			}
-			createTokenOutput, err := oidcClient.CreateToken(&createTokenInput)
+			createTokenOutput, err := oidcClient.CreateToken(ctx, &createTokenInput)
 
 			if err != nil {
-				if aerr, ok := err.(awserr.Error); ok {
-					switch aerr.Code() {
-					case ssooidc.ErrCodeAuthorizationPendingException:
-						continue
-					default:
-						return nil, err
-					}
+				var pendingErr *ssooidctypes.AuthorizationPendingException
+				if errors.As(err, &pendingErr) {
+					continue
 				}
 				return nil, err
 			}
@@ -148,7 +171,7 @@ func loginWithDeps(
 				StartUrl:    org.URL,
 				Region:      org.Region,
 				AccessToken: *createTokenOutput.AccessToken,
-				ExpiresAt:   deps.now().Add(time.Second * time.Duration(*createTokenOutput.ExpiresIn)).Format(time.RFC3339),
+				ExpiresAt:   deps.now().Add(time.Second * time.Duration(createTokenOutput.ExpiresIn)).Format(time.RFC3339),
 			}
 
 			if err := deps.saveToken(ssoToken, org.URL); err != nil {
@@ -167,14 +190,19 @@ func loginWithDeps(
 		MsgType:  bus.MSG_TYPE_INFO,
 		Contents: fmt.Sprintf("The SSO session will expire at %s", t),
 	})
-	file, err := deps.newConfigFile(config.GetInstance().Home)
+	file, err := deps.newConfigFile(appconfig.GetInstance().Home)
+	if err != nil {
+		return nil, err
+	}
+
+	ssoClient, err := deps.newSSOClient(ctx, org.Region)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SSOFlow{
 		accessToken: &ssoToken.AccessToken,
-		ssoClient:   deps.newSSOClient(sess, org.Region),
+		ssoClient:   ssoClient,
 		configFile:  file,
 		ssoRegion:   &org.Region,
 		ssoStartUrl: &org.URL,
@@ -184,7 +212,7 @@ func loginWithDeps(
 }
 
 func (s *SSOFlow) getAccountRoles(
-	acc *sso.AccountInfo,
+	acc *ssotypes.AccountInfo,
 	wg *sync.WaitGroup,
 	channel chan AccountRolesOutput,
 ) {
@@ -195,10 +223,10 @@ func (s *SSOFlow) getAccountRoles(
 		NextToken:   nil,
 	}
 
-	var roleList []*sso.RoleInfo
+	var roleList []ssotypes.RoleInfo
 
 	for {
-		rolesResponse, err := s.ssoClient.ListAccountRoles(&listRolesInput)
+		rolesResponse, err := s.ssoClient.ListAccountRoles(context.Background(), &listRolesInput)
 		if err != nil {
 			result.err = err
 			wg.Done()
@@ -213,7 +241,7 @@ func (s *SSOFlow) getAccountRoles(
 	}
 
 	for _, role := range roleList {
-		parts := strings.Split(*acc.AccountName, " ")
+		parts := strings.Split(awsv2.ToString(acc.AccountName), " ")
 		var body string
 		for i, part := range parts {
 			if i > 0 {
@@ -222,7 +250,7 @@ func (s *SSOFlow) getAccountRoles(
 				body += part
 			}
 		}
-		sectionName := fmt.Sprintf("profile %s:%s:%s", s.prefix, body, *role.RoleName)
+		sectionName := fmt.Sprintf("profile %s:%s:%s", s.prefix, body, awsv2.ToString(role.RoleName))
 
 		section, err := s.configFile.File.NewSection(sectionName)
 		if err != nil {
@@ -232,9 +260,9 @@ func (s *SSOFlow) getAccountRoles(
 
 		section.NewKey("sso_start_url", *s.ssoStartUrl)
 		section.NewKey("sso_region", *s.ssoRegion)
-		section.NewKey("sso_account_name", *acc.AccountName)
-		section.NewKey("sso_account_id", *acc.AccountId)
-		section.NewKey("sso_role_name", *role.RoleName)
+		section.NewKey("sso_account_name", awsv2.ToString(acc.AccountName))
+		section.NewKey("sso_account_id", awsv2.ToString(acc.AccountId))
+		section.NewKey("sso_role_name", awsv2.ToString(role.RoleName))
 		section.NewKey("region", *s.ssoRegion)
 		section.NewKey("org", s.orgName)
 		section.NewKey("sso_auto_populated", "true")
@@ -249,10 +277,10 @@ func (s *SSOFlow) PopulateRoles() ([]string, error) {
 		NextToken:   nil,
 	}
 
-	accounts := []*sso.AccountInfo{}
+	var accounts []ssotypes.AccountInfo
 
 	for {
-		accsResponse, err := s.ssoClient.ListAccounts(&listAccountsInput)
+		accsResponse, err := s.ssoClient.ListAccounts(context.Background(), &listAccountsInput)
 		if err != nil {
 			return nil, err
 		}
@@ -271,8 +299,9 @@ func (s *SSOFlow) PopulateRoles() ([]string, error) {
 	var wg sync.WaitGroup
 	wg.Add(len(accounts))
 	queue := make(chan AccountRolesOutput, len(accounts))
-	for _, acc := range accounts {
-		go s.getAccountRoles(acc, &wg, queue)
+	for i := range accounts {
+		acc := accounts[i]
+		go s.getAccountRoles(&acc, &wg, queue)
 	}
 	wg.Wait()
 	var result []string
@@ -290,7 +319,7 @@ func (s *SSOFlow) PopulateRoles() ([]string, error) {
 
 func (s *SSOFlow) GetCredentials() ([]CredentialsResult, error) {
 	var result []CredentialsResult
-	creds, err := files.NewCredentialsFile(config.GetInstance().Home)
+	creds, err := files.NewCredentialsFile(appconfig.GetInstance().Home)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +355,7 @@ func (s *SSOFlow) GetCredentials() ([]CredentialsResult, error) {
 		if err != nil {
 			return nil, item.err
 		}
-		expiresTime := *item.creds.RoleCredentials.Expiration / 1000
+		expiresTime := item.creds.RoleCredentials.Expiration / 1000
 		credsSection.NewKey("aws_access_key_id", *item.creds.RoleCredentials.AccessKeyId)
 		credsSection.NewKey("aws_secret_access_key", *item.creds.RoleCredentials.SecretAccessKey)
 		credsSection.NewKey("aws_session_token", *item.creds.RoleCredentials.SessionToken)
@@ -353,7 +382,7 @@ func (s *SSOFlow) getRoleCreds(
 ) {
 	var result RoleCredentialsOutput
 	result.roleName = roleName
-	credsOutput, err := s.ssoClient.GetRoleCredentials(input)
+	credsOutput, err := s.ssoClient.GetRoleCredentials(context.Background(), input)
 	if err != nil {
 		result.err = err
 	}
@@ -365,19 +394,18 @@ func (s *SSOFlow) getRoleCreds(
 }
 
 func (s *SSOFlow) GetCredsByRoleName(roleName string, accountID string) (*sso.GetRoleCredentialsOutput, error) {
-	return s.ssoClient.GetRoleCredentials(&sso.GetRoleCredentialsInput{
+	return s.ssoClient.GetRoleCredentials(context.Background(), &sso.GetRoleCredentialsInput{
 		AccessToken: s.accessToken,
 		AccountId:   &accountID,
 		RoleName:    &roleName,
 	})
 }
 
-func GetCachedSSOFlow(org config.Organization) (*SSOFlow, error) {
+func GetCachedSSOFlow(org appconfig.Organization) (*SSOFlow, error) {
 	return getCachedSSOFlowWithDeps(org, loginDepsFactory())
 }
 
-func getCachedSSOFlowWithDeps(org config.Organization, deps loginDeps) (*SSOFlow, error) {
-	sess := deps.newSession()
+func getCachedSSOFlowWithDeps(org appconfig.Organization, deps loginDeps) (*SSOFlow, error) {
 	clientCredentials, err := deps.getClientCreds(org.Region)
 	if err != nil {
 		return nil, err
@@ -387,7 +415,7 @@ func getCachedSSOFlowWithDeps(org config.Organization, deps loginDeps) (*SSOFlow
 		return nil, fmt.Errorf("Unable to get client credentials, please login with this CLI and then try again")
 	}
 
-	ssoToken, err := deps.getToken(org.URL, sess, org.Region)
+	ssoToken, err := deps.getToken(org.URL, org.Region)
 	if err != nil {
 		return nil, err
 	}
@@ -396,14 +424,19 @@ func getCachedSSOFlowWithDeps(org config.Organization, deps loginDeps) (*SSOFlow
 		return nil, fmt.Errorf("Unable to get sso token, please login with this CLI and then try again")
 	}
 
-	file, err := deps.newConfigFile(config.GetInstance().Home)
+	file, err := deps.newConfigFile(appconfig.GetInstance().Home)
+	if err != nil {
+		return nil, err
+	}
+
+	ssoClient, err := deps.newSSOClient(context.Background(), org.Region)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SSOFlow{
 		accessToken: &ssoToken.AccessToken,
-		ssoClient:   deps.newSSOClient(sess, org.Region),
+		ssoClient:   ssoClient,
 		configFile:  file,
 		ssoRegion:   &org.Region,
 		ssoStartUrl: &org.URL,

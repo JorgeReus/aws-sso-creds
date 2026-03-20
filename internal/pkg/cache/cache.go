@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -12,16 +13,23 @@ import (
 
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/util"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sso"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sso"
 )
 
+type tokenValidatorAPI interface {
+	ListAccounts(context.Context, *sso.ListAccountsInput, ...func(*sso.Options)) (*sso.ListAccountsOutput, error)
+}
+
 var cacheDir string
-var validateToken = func(sess *session.Session, region, accessToken string) error {
-	aux := sso.New(sess, aws.NewConfig().WithRegion(region))
-	_, err := aux.ListAccounts(&sso.ListAccountsInput{
-		AccessToken: &accessToken,
+var newValidationClient = func(region string) tokenValidatorAPI {
+	return sso.New(sso.Options{Region: region})
+}
+
+var validateToken = func(ctx context.Context, region, accessToken string) error {
+	client := newValidationClient(region)
+	_, err := client.ListAccounts(ctx, &sso.ListAccountsInput{
+		AccessToken: aws.String(accessToken),
 	})
 	return err
 }
@@ -110,7 +118,6 @@ func (c *SSOToken) Save(url string) error {
 
 func GetSSOToken(
 	url string,
-	sess *session.Session,
 	region string,
 ) (*SSOToken, error) {
 	var result SSOToken
@@ -144,7 +151,7 @@ func GetSSOToken(
 		return nil, nil
 	}
 
-	if err := validateToken(sess, region, result.AccessToken); err != nil {
+	if err := validateToken(context.Background(), region, result.AccessToken); err != nil {
 		return nil, nil
 	}
 
