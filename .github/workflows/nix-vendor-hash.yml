@@ -61,10 +61,13 @@ jobs:
 
           if [[ "$CAN_PUSH" != "true" ]]; then
             echo "updated=false" >>"$GITHUB_OUTPUT"
+            echo "manual_update_required=true" >>"$GITHUB_OUTPUT"
+            echo "hash=$new_hash" >>"$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "updated=true" >>"$GITHUB_OUTPUT"
+          echo "manual_update_required=false" >>"$GITHUB_OUTPUT"
           echo "hash=$new_hash" >>"$GITHUB_OUTPUT"
 
       - name: Commit updated vendorHash
@@ -82,3 +85,17 @@ jobs:
           git add flake.nix
           git commit -m "ci: refresh nix vendorHash"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+      - name: Require manual vendorHash refresh when branch is not writable
+        if: steps.vendor-hash.outputs.manual_update_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "flake.nix vendorHash must be updated to ${HASH}, but this workflow cannot push to ${BRANCH}."
+          echo "This is expected for Dependabot PRs and external forks with read-only tokens."
+          echo "Please update flake.nix manually with vendorHash = \"${HASH}\"."
+          exit 1
+        env:
+          HASH: ${{ steps.vendor-hash.outputs.hash }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
