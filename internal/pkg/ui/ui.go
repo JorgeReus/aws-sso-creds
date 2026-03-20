@@ -5,6 +5,7 @@ import (
 	"os/user"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sso "github.com/JorgeReus/aws-sso-creds/internal/app"
@@ -35,25 +36,29 @@ type programRunner interface {
 }
 
 type uiDeps struct {
-	currentUser          func() (*user.User, error)
+	currentUser           func() (*user.User, error)
 	validateSuperuserFile func(string, *user.User) string
-	newProgram           func(tea.Model) programRunner
-	login                func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error)
-	configFileSSOEmpty   func(string, string) bool
-	println              func(...interface{}) (int, error)
-	sleep                func(time.Duration)
+	newProgram            func(tea.Model) programRunner
+	login                 func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error)
+	configFileSSOEmpty    func(string, string) bool
+	println               func(...interface{}) (int, error)
+	sleep                 func(time.Duration)
+	startSubscriber       func(uiDeps)
+	startFlow             func(UI, uiDeps)
 }
 
 var (
-	c                 config.Config
-	errorColor        te.Color
-	informationColor  te.Color
-	warningColor      te.Color
-	focusColor        te.Color
-	spinnerColor      te.Color
-	flow              flowAPI
-	hasFinished       bool
-	needsUserApproval = false
+	c                config.Config
+	errorColor       te.Color
+	informationColor te.Color
+	warningColor     te.Color
+	focusColor       te.Color
+	spinnerColor     te.Color
+	flow             flowAPI
+	hasFinished      atomic.Bool
+
+	needsUserApproval atomic.Bool
+	displayMsgMu      sync.RWMutex
 	displayMsg        string
 	outputLines       []string
 	outputLinesMu     sync.RWMutex
@@ -64,8 +69,8 @@ var (
 var uiDepsFactory = defaultUIDeps
 
 func defaultUIDeps() uiDeps {
-	return uiDeps{
-		currentUser: user.Current,
+	deps := uiDeps{
+		currentUser:           user.Current,
 		validateSuperuserFile: util.ValidateSuperuserFile,
 		newProgram: func(m tea.Model) programRunner {
 			return tea.NewProgram(m)
@@ -77,15 +82,32 @@ func defaultUIDeps() uiDeps {
 		println:            fmt.Println,
 		sleep:              time.Sleep,
 	}
+	deps.startSubscriber = channelSubscriberWithDeps
+	deps.startFlow = handleFlowWithDeps
+	return deps
 }
 
 func resetUIStateForTest() {
-	hasFinished = false
-	needsUserApproval = false
-	displayMsg = ""
+	hasFinished.Store(false)
+	needsUserApproval.Store(false)
+	setDisplayMsg("")
+	outputLinesMu.Lock()
 	outputLines = nil
+	outputLinesMu.Unlock()
 	msgBus = bus.NewBus()
 	flow = nil
+}
+
+func setDisplayMsg(msg string) {
+	displayMsgMu.Lock()
+	defer displayMsgMu.Unlock()
+	displayMsg = msg
+}
+
+func getDisplayMsg() string {
+	displayMsgMu.RLock()
+	defer displayMsgMu.RUnlock()
+	return displayMsg
 }
 
 func appendOutputLine(line string) {
@@ -150,7 +172,9 @@ func startWithDeps(u UI, deps uiDeps) error {
 
 	m := initialModel()
 	p := deps.newProgram(m)
-	go handleFlowWithDeps(u, deps)
+	if deps.startFlow != nil {
+		go deps.startFlow(u, deps)
+	}
 	if err := p.Start(); err != nil {
 		_, _ = deps.println(fmt.Sprintf("Error starting program: %s", err))
 		return err
@@ -159,15 +183,16 @@ func startWithDeps(u UI, deps uiDeps) error {
 }
 
 func (m model) View() string {
-	if hasFinished {
+	if hasFinished.Load() {
 		return renderedOutputLines()
 	}
 
 	output := renderedOutputLines()
+	msg := getDisplayMsg()
 	if output == "" {
-		return te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg
+		return te.String(m.spinner.View()).Foreground(spinnerColor).String() + msg
 	}
-	return te.String(m.spinner.View()).Foreground(spinnerColor).String() + displayMsg + "\n" + output
+	return te.String(m.spinner.View()).Foreground(spinnerColor).String() + msg + "\n" + output
 }
 
 func (m model) Init() tea.Cmd {
@@ -183,7 +208,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "enter":
-			if needsUserApproval {
+			if needsUserApproval.Load() {
 				msgBus.Send(bus.BusMsg{MsgType: bus.MSG_TYPE_CONT, Contents: ""})
 			}
 			return m, nil
@@ -192,7 +217,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
-		if hasFinished {
+		if hasFinished.Load() {
 			return m, tea.Quit
 		}
 		return m, cmd
@@ -207,8 +232,8 @@ func handleBusMessage(msg bus.BusMsg, deps uiDeps) {
 		appendOutputLine(te.String(msg.Contents).Foreground(informationColor).String())
 	case bus.MSG_TYPE_ERR:
 		appendOutputLine(printWarning(msg.Contents))
-		displayMsg = te.String("Continue in your browser and press ENTER").Foreground(informationColor).String()
-		needsUserApproval = true
+		setDisplayMsg(te.String("Continue in your browser and press ENTER").Foreground(informationColor).String())
+		needsUserApproval.Store(true)
 	default:
 	}
 }
@@ -230,29 +255,31 @@ func (u *UI) handleFlow() {
 }
 
 func handleFlowWithDeps(u UI, deps uiDeps) {
-	displayMsg = te.String(fmt.Sprintf("Logging in into AWS SSO org: %s", u.Org.Name)).
+	setDisplayMsg(te.String(fmt.Sprintf("Logging in into AWS SSO org: %s", u.Org.Name)).
 		Foreground(informationColor).
-		String()
+		String())
 
-	go channelSubscriberWithDeps(deps)
+	if deps.startSubscriber != nil {
+		go deps.startSubscriber(deps)
+	}
 
 	var err error
 	flow, err = deps.login(u.Org, u.ForceLogin, u.NoBrowser, msgBus)
 	if err != nil {
 		appendOutputLine(printErr(err))
-		hasFinished = true
+		hasFinished.Store(true)
 		return
 	}
 
 	isNewRun := deps.configFileSSOEmpty(config.GetInstance().Home, u.Org.Name)
 
 	if u.PopulateRoles || isNewRun {
-		displayMsg = "Updating roles"
+		setDisplayMsg("Updating roles")
 		appendOutputLine("Synced roles in ~/.aws/config")
 		roles, err := flow.PopulateRoles()
 		if err != nil {
 			appendOutputLine(printErr(err))
-			hasFinished = true
+			hasFinished.Store(true)
 			return
 		}
 		for _, role := range roles {
@@ -264,14 +291,14 @@ func handleFlowWithDeps(u UI, deps uiDeps) {
 	}
 
 	if u.CreateStatic {
-		displayMsg = te.String("Getting static credentials").Foreground(informationColor).String()
+		setDisplayMsg(te.String("Getting static credentials").Foreground(informationColor).String())
 		roles, err := flow.GetCredentials()
 		if err != nil {
 			appendOutputLine(printErr(err))
-			hasFinished = true
+			hasFinished.Store(true)
 			return
 		}
-		displayMsg = "Updating static credentials"
+		setDisplayMsg("Updating static credentials")
 		appendOutputLine("Added temporary credentials in ~/.aws/credentials")
 		for _, role := range roles {
 			if role.WasSuccesful {
@@ -293,5 +320,5 @@ func handleFlowWithDeps(u UI, deps uiDeps) {
 	if (u.PopulateRoles && u.CreateStatic) || isNewRun {
 		appendOutputLine("You can use aws-sso-creds -l to select your profile")
 	}
-	hasFinished = true
+	hasFinished.Store(true)
 }
