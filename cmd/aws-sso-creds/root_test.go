@@ -53,9 +53,14 @@ func TestSubcommandHelpDoesNotShowVersion(t *testing.T) {
 	}
 }
 
-func TestDefaultVersionIsDirty(t *testing.T) {
+func TestBuildVersionReturnsDevelForDevelBuildInfo(t *testing.T) {
+	origVersion := version
 	origReadBuildInfo := readBuildInfo
-	defer func() { readBuildInfo = origReadBuildInfo }()
+	defer func() {
+		version = origVersion
+		readBuildInfo = origReadBuildInfo
+	}()
+	version = "dirty"
 	readBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, true
 	}

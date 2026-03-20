@@ -1,0 +1,84 @@
+name: nix-vendor-hash
+
+on:
+  pull_request:
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "flake.nix"
+
+permissions:
+  contents: write
+
+jobs:
+  update-vendor-hash:
+    name: Update Nix vendorHash
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v19
+
+      - name: Attempt build and patch stale vendorHash
+        id: vendor-hash
+        shell: bash
+        env:
+          CAN_PUSH: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+
+          build_log="$(mktemp)"
+          if nix build .#aws-sso-creds >"$build_log" 2>&1; then
+            echo "updated=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! grep -q "hash mismatch in fixed-output derivation" "$build_log"; then
+            cat "$build_log"
+            exit 1
+          fi
+
+          new_hash="$(sed -n 's/.*got:[[:space:]]*\\(sha256-[A-Za-z0-9+/=]*\\).*/\\1/p' "$build_log" | head -n1)"
+          if [[ -z "$new_hash" ]]; then
+            cat "$build_log"
+            exit 1
+          fi
+
+          current_hash="$(sed -n 's/.*vendorHash = \"\\([^\"]*\\)\";.*/\\1/p' flake.nix | head -n1)"
+          if [[ "$current_hash" == "$new_hash" ]]; then
+            echo "updated=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sed -i "s|vendorHash = \".*\";|vendorHash = \"$new_hash\";|" flake.nix
+          nix build .#aws-sso-creds
+
+          if [[ "$CAN_PUSH" != "true" ]]; then
+            echo "updated=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "updated=true" >>"$GITHUB_OUTPUT"
+          echo "hash=$new_hash" >>"$GITHUB_OUTPUT"
+
+      - name: Commit updated vendorHash
+        if: steps.vendor-hash.outputs.updated == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- flake.nix; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add flake.nix
+          git commit -m "ci: refresh nix vendorHash"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"

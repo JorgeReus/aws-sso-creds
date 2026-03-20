@@ -73,6 +73,44 @@ Release PRs keep this version updated automatically:
 Run `go install github.com/JorgeReus/aws-sso-creds@1.3.2`
 <!-- x-release-please-end -->
 
+### With Nix
+
+If you use flakes, you can install `aws-sso-creds` directly from this repo:
+
+```bash
+nix profile install github:JorgeReus/aws-sso-creds
+```
+
+You can also run it without installing it permanently:
+
+```bash
+nix run github:JorgeReus/aws-sso-creds
+```
+
+If you want to consume this repository from another flake, add it as an input:
+
+```nix
+{
+  inputs = {
+    aws-sso-creds.url = "github:JorgeReus/aws-sso-creds";
+  };
+}
+```
+
+Then use the package from your outputs:
+
+```nix
+{
+  outputs = { self, nixpkgs, aws-sso-creds, ... }:
+    let
+      system = "aarch64-darwin";
+    in
+    {
+      packages.${system}.default = aws-sso-creds.packages.${system}.default;
+    };
+}
+```
+
 <!-- USAGE EXAMPLES -->
 
 ## Usage

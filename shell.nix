@@ -1,8 +1,5 @@
-{
-  pkgs ? import <nixpkgs> { },
-}:
-pkgs.mkShell {
-  packages = with pkgs; [
-    go_1_26
-  ];
-}
+let
+  flake = builtins.getFlake (toString ./.);
+  system = builtins.currentSystem;
+in
+flake.devShells.${system}.default
