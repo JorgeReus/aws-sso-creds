@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.1.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.1.0...v1.1.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* add release config updater ([9833db2](https://github.com/JorgeReus/aws-sso-creds/commit/9833db2c011716589e780cb957dac75ed15629c9))
+
 ## [1.1.0](https://github.com/JorgeReus/aws-sso-creds/compare/aws-sso-creds-v1.0.5...aws-sso-creds-v1.1.0) (2026-03-19)
 
 
