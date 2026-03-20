@@ -82,6 +82,18 @@ func TestModelViewIncludesDisplayMessage(t *testing.T) {
 	}
 }
 
+func TestModelViewIncludesOutputLinesWhenPresent(t *testing.T) {
+	resetUIStateForTest()
+	setupUIConfig(t)
+
+	setDisplayMsg("continue")
+	appendOutputLine("line one")
+	view := initialModel().View()
+	if !strings.Contains(view, "continue") || !strings.Contains(view, "line one") {
+		t.Fatalf("View() = %q, want display message and output line", view)
+	}
+}
+
 func TestModelInitReturnsSpinnerTick(t *testing.T) {
 	cmd := initialModel().Init()
 	if cmd == nil {
@@ -186,6 +198,9 @@ func TestHandleBusMessageSetsApprovalState(t *testing.T) {
 	if !strings.Contains(renderedOutputLines(), "Warning: open browser") {
 		t.Fatalf("renderedOutputLines() = %q, want warning message", renderedOutputLines())
 	}
+	if !strings.Contains(getDisplayMsg(), "Continue in your browser and press ENTER") {
+		t.Fatalf("displayMsg = %q, want approval prompt", getDisplayMsg())
+	}
 }
 
 func TestHandleFlowWithDepsPopulatesRolesAndCredentials(t *testing.T) {
@@ -250,6 +265,69 @@ func TestHandleFlowWithDepsPrintsLoginError(t *testing.T) {
 	})
 	if !strings.Contains(renderedOutputLines(), "Error: boom") {
 		t.Fatalf("renderedOutputLines() = %q, want login error", renderedOutputLines())
+	}
+}
+
+func TestHandleFlowWithDepsPrintsPopulateRolesError(t *testing.T) {
+	resetUIStateForTest()
+	setupUIConfig(t)
+
+	handleFlowWithDeps(UI{PopulateRoles: true, Org: config.Organization{Name: "dev"}}, uiDeps{
+		currentUser:           func() (*user.User, error) { return &user.User{Uid: "1000"}, nil },
+		validateSuperuserFile: func(string, *user.User) string { return "" },
+		newProgram:            func(tea.Model) programRunner { return &fakeProgram{} },
+		login: func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error) {
+			return fakeFlow{populateRolesErr: errors.New("populate failed")}, nil
+		},
+		configFileSSOEmpty: func(string, string) bool { return false },
+		println:            func(...interface{}) (int, error) { return 0, nil },
+		sleep:              func(time.Duration) {},
+	})
+	if !strings.Contains(renderedOutputLines(), "Error: populate failed") {
+		t.Fatalf("renderedOutputLines() = %q, want populate error", renderedOutputLines())
+	}
+}
+
+func TestHandleFlowWithDepsPrintsCredentialsError(t *testing.T) {
+	resetUIStateForTest()
+	setupUIConfig(t)
+
+	handleFlowWithDeps(UI{CreateStatic: true, Org: config.Organization{Name: "dev"}}, uiDeps{
+		currentUser:           func() (*user.User, error) { return &user.User{Uid: "1000"}, nil },
+		validateSuperuserFile: func(string, *user.User) string { return "" },
+		newProgram:            func(tea.Model) programRunner { return &fakeProgram{} },
+		login: func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error) {
+			return fakeFlow{credentialsErr: errors.New("credentials failed")}, nil
+		},
+		configFileSSOEmpty: func(string, string) bool { return false },
+		println:            func(...interface{}) (int, error) { return 0, nil },
+		sleep:              func(time.Duration) {},
+	})
+	if !strings.Contains(renderedOutputLines(), "Error: credentials failed") {
+		t.Fatalf("renderedOutputLines() = %q, want credentials error", renderedOutputLines())
+	}
+}
+
+func TestHandleFlowWithDepsPrintsManualRoleEntryError(t *testing.T) {
+	resetUIStateForTest()
+	setupUIConfig(t)
+
+	handleFlowWithDeps(UI{CreateStatic: true, Org: config.Organization{Name: "dev"}}, uiDeps{
+		currentUser:           func() (*user.User, error) { return &user.User{Uid: "1000"}, nil },
+		validateSuperuserFile: func(string, *user.User) string { return "" },
+		newProgram:            func(tea.Model) programRunner { return &fakeProgram{} },
+		login: func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error) {
+			return fakeFlow{credentialsResult: []sso.CredentialsResult{{
+				ProfileName:  "tmp:dev:Broken",
+				WasSuccesful: false,
+			}}}, nil
+		},
+		configFileSSOEmpty: func(string, string) bool { return false },
+		println:            func(...interface{}) (int, error) { return 0, nil },
+		sleep:              func(time.Duration) {},
+	})
+	if !strings.Contains(renderedOutputLines(), "Entry error tmp:dev:Broken in ~/.aws/config") {
+		t.Fatalf("renderedOutputLines() = %q, want entry error", renderedOutputLines())
 	}
 }
 
