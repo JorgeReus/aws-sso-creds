@@ -85,3 +85,33 @@ func TestNewCredentialsFileCreatesCredentialsPath(t *testing.T) {
 		t.Fatalf("credentials file stat error = %v", err)
 	}
 }
+
+func TestNewConfigFileCreatesAWSDirectoryWhenMissing(t *testing.T) {
+	home := t.TempDir()
+
+	configFile, err := NewConfigFile(home)
+	if err != nil {
+		t.Fatalf("NewConfigFile() error = %v", err)
+	}
+	if configFile.Path != filepath.Join(home, ".aws", "config") {
+		t.Fatalf("Path = %q, want %q", configFile.Path, filepath.Join(home, ".aws", "config"))
+	}
+	if _, err := os.Stat(configFile.Path); err != nil {
+		t.Fatalf("config file stat error = %v", err)
+	}
+}
+
+func TestNewCredentialsFileCreatesAWSDirectoryWhenMissing(t *testing.T) {
+	home := t.TempDir()
+
+	credentialsFile, err := NewCredentialsFile(home)
+	if err != nil {
+		t.Fatalf("NewCredentialsFile() error = %v", err)
+	}
+	if credentialsFile.Path != filepath.Join(home, ".aws", "credentials") {
+		t.Fatalf("Path = %q, want %q", credentialsFile.Path, filepath.Join(home, ".aws", "credentials"))
+	}
+	if _, err := os.Stat(credentialsFile.Path); err != nil {
+		t.Fatalf("credentials file stat error = %v", err)
+	}
+}

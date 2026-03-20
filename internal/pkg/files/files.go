@@ -5,14 +5,23 @@ import (
 	"fmt"
 	"os"
 	"path"
+	pathpkg "path/filepath"
 
 	"gopkg.in/ini.v1"
 )
 
 func NewConfigFile(homedir string) (*AWSFile, error) {
 	path := path.Join(homedir, ".aws", "config")
-	f, err := os.OpenFile(path, os.O_CREATE, 0644)
-	f.Close()
+	if err := os.MkdirAll(pathpkg.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
 	file, err := ini.Load(path)
 	if err != nil {
 		return nil, err
@@ -56,18 +65,26 @@ func IsValidEntry(s *ini.Section, organization string) bool {
 	return false
 }
 
-func(f *AWSFile) GetentryByAWSProfile(profile string) (*ini.Section, error) {
-  section, err := f.File.GetSection(fmt.Sprintf("profile %s", profile))
-  if err != nil {
-    return nil, err
-  }
-  return section, nil
+func (f *AWSFile) GetentryByAWSProfile(profile string) (*ini.Section, error) {
+	section, err := f.File.GetSection(fmt.Sprintf("profile %s", profile))
+	if err != nil {
+		return nil, err
+	}
+	return section, nil
 }
 
 func NewCredentialsFile(homedir string) (*AWSFile, error) {
 	path := path.Join(homedir, ".aws", "credentials")
-	f, err := os.OpenFile(path, os.O_CREATE, 0644)
-	f.Close()
+	if err := os.MkdirAll(pathpkg.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
 	file, err := ini.Load(path)
 	if err != nil {
 		return nil, err
