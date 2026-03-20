@@ -53,7 +53,7 @@ func TestInitCommandCreatesOrganizationConfig(t *testing.T) {
 	configPath = filepath.Join(t.TempDir(), "aws-sso-creds.toml")
 	var out bytes.Buffer
 	cmd := newInitCmd(initDeps{
-		in:        strings.NewReader("dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\n"),
+		in:        strings.NewReader("dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\n\n"),
 		out:       &out,
 		upsertOrg: config.UpsertOrganizationConfig,
 		fileExists: func(string) bool {
@@ -75,6 +75,9 @@ func TestInitCommandCreatesOrganizationConfig(t *testing.T) {
 	if got := config.GetInstance().Orgs["dev"].Prefix; got != "dev" {
 		t.Fatalf("prefix = %q, want dev", got)
 	}
+	if got := config.GetInstance().Orgs["dev"].EffectiveSSORegion(); got != "us-east-1" {
+		t.Fatalf("EffectiveSSORegion() = %q, want us-east-1", got)
+	}
 }
 
 func TestInitCommandUpdatesExistingOrganization(t *testing.T) {
@@ -90,7 +93,7 @@ region = "us-west-1"
 
 	var out bytes.Buffer
 	cmd := newInitCmd(initDeps{
-		in:        strings.NewReader("dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\n"),
+		in:        strings.NewReader("dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\nus-west-2\n"),
 		out:       &out,
 		upsertOrg: config.UpsertOrganizationConfig,
 		fileExists: func(string) bool {
@@ -109,8 +112,11 @@ region = "us-west-1"
 	if err := config.Init(t.TempDir(), configPath); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
-	if got := config.GetInstance().Orgs["dev"].Region; got != "us-east-1" {
-		t.Fatalf("region = %q, want us-east-1", got)
+	if got := config.GetInstance().Orgs["dev"].EffectiveSSORegion(); got != "us-east-1" {
+		t.Fatalf("EffectiveSSORegion() = %q, want us-east-1", got)
+	}
+	if got := config.GetInstance().Orgs["dev"].EffectiveDefaultRegion(); got != "us-west-2" {
+		t.Fatalf("EffectiveDefaultRegion() = %q, want us-west-2", got)
 	}
 }
 
@@ -127,7 +133,7 @@ region = "eu-west-1"
 
 	var out bytes.Buffer
 	cmd := newInitCmd(initDeps{
-		in:        strings.NewReader("dev\nhttps://shared.awsapps.com/start\ndev\nus-east-1\n"),
+		in:        strings.NewReader("dev\nhttps://shared.awsapps.com/start\ndev\nus-east-1\n\n"),
 		out:       &out,
 		upsertOrg: config.UpsertOrganizationConfig,
 		fileExists: func(string) bool {
@@ -138,6 +144,39 @@ region = "eu-west-1"
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), `already uses start URL`) {
 		t.Fatalf("Execute() error = %v, want duplicate URL conflict", err)
+	}
+}
+
+func TestInitCommandWritesExplicitSSORegionWithoutDefaultRegionWhenBlank(t *testing.T) {
+	configPath = filepath.Join(t.TempDir(), "aws-sso-creds.toml")
+	var out bytes.Buffer
+	cmd := newInitCmd(initDeps{
+		in:        strings.NewReader("dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\n\n"),
+		out:       &out,
+		upsertOrg: config.UpsertOrganizationConfig,
+		fileExists: func(string) bool {
+			return false
+		},
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	text := string(raw)
+	if !strings.Contains(text, `sso_region = "us-east-1"`) {
+		t.Fatalf("config = %q, want sso_region", text)
+	}
+	if strings.Contains(text, "default_region") {
+		t.Fatalf("config = %q, did not want default_region", text)
+	}
+	if strings.Contains(text, "\nregion = ") {
+		t.Fatalf("config = %q, did not want legacy region key", text)
 	}
 }
 

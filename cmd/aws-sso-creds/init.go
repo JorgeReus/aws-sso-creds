@@ -101,16 +101,21 @@ func runInitCommand(deps initDeps) error {
 	if err != nil {
 		return err
 	}
-	region, err := prompts.promptValue("Region", validateNonEmpty)
+	ssoRegion, err := prompts.promptValue("SSO region", validateNonEmpty)
+	if err != nil {
+		return err
+	}
+	defaultRegion, err := prompts.promptValue("Default AWS region (optional, press enter to use the SSO region)", nil)
 	if err != nil {
 		return err
 	}
 
 	if err := deps.upsertOrg(configPath, config.Organization{
-		Name:   name,
-		URL:    startURL,
-		Prefix: prefix,
-		Region: region,
+		Name:          name,
+		URL:           startURL,
+		Prefix:        prefix,
+		SSORegion:     ssoRegion,
+		DefaultRegion: defaultRegion,
 	}); err != nil {
 		return err
 	}

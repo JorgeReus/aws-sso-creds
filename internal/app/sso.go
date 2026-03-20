@@ -71,19 +71,21 @@ func loginWithDeps(
 	deps loginDeps,
 ) (*SSOFlow, error) {
 	ctx := context.Background()
+	ssoRegion := org.EffectiveSSORegion()
+	defaultRegion := org.EffectiveDefaultRegion()
 	var oidcClient oidcClientAPI
 	getOIDCClient := func() (oidcClientAPI, error) {
 		if oidcClient != nil {
 			return oidcClient, nil
 		}
-		client, err := deps.newOIDCClient(ctx, org.Region)
+		client, err := deps.newOIDCClient(ctx, ssoRegion)
 		if err != nil {
 			return nil, err
 		}
 		oidcClient = client
 		return oidcClient, nil
 	}
-	clientCredentials, err := deps.getClientCreds(org.Region)
+	clientCredentials, err := deps.getClientCreds(ssoRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +108,12 @@ func loginWithDeps(
 			ClientSecret: *resp.ClientSecret,
 			ExpiresAt:    tm.Format(time.RFC3339),
 		}
-		if err := deps.saveClientCreds(clientCredentials, &org.Region); err != nil {
+		if err := deps.saveClientCreds(clientCredentials, &ssoRegion); err != nil {
 			return nil, err
 		}
 	}
 
-	ssoToken, err := deps.getToken(org.URL, org.Region)
+	ssoToken, err := deps.getToken(org.URL, ssoRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +171,7 @@ func loginWithDeps(
 
 			ssoToken = &cache.SSOToken{
 				StartUrl:    org.URL,
-				Region:      org.Region,
+				Region:      ssoRegion,
 				AccessToken: *createTokenOutput.AccessToken,
 				ExpiresAt:   deps.now().Add(time.Second * time.Duration(createTokenOutput.ExpiresIn)).Format(time.RFC3339),
 			}
@@ -195,19 +197,20 @@ func loginWithDeps(
 		return nil, err
 	}
 
-	ssoClient, err := deps.newSSOClient(ctx, org.Region)
+	ssoClient, err := deps.newSSOClient(ctx, ssoRegion)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SSOFlow{
-		accessToken: &ssoToken.AccessToken,
-		ssoClient:   ssoClient,
-		configFile:  file,
-		ssoRegion:   &org.Region,
-		ssoStartUrl: &org.URL,
-		orgName:     org.Name,
-		prefix:      org.Prefix,
+		accessToken:   &ssoToken.AccessToken,
+		ssoClient:     ssoClient,
+		configFile:    file,
+		ssoRegion:     &ssoRegion,
+		defaultRegion: &defaultRegion,
+		ssoStartUrl:   &org.URL,
+		orgName:       org.Name,
+		prefix:        org.Prefix,
 	}, nil
 }
 
@@ -263,7 +266,7 @@ func (s *SSOFlow) getAccountRoles(
 		section.NewKey("sso_account_name", awsv2.ToString(acc.AccountName))
 		section.NewKey("sso_account_id", awsv2.ToString(acc.AccountId))
 		section.NewKey("sso_role_name", awsv2.ToString(role.RoleName))
-		section.NewKey("region", *s.ssoRegion)
+		section.NewKey("region", *s.defaultRegion)
 		section.NewKey("org", s.orgName)
 		section.NewKey("sso_auto_populated", "true")
 	}
@@ -406,7 +409,9 @@ func GetCachedSSOFlow(org appconfig.Organization) (*SSOFlow, error) {
 }
 
 func getCachedSSOFlowWithDeps(org appconfig.Organization, deps loginDeps) (*SSOFlow, error) {
-	clientCredentials, err := deps.getClientCreds(org.Region)
+	ssoRegion := org.EffectiveSSORegion()
+	defaultRegion := org.EffectiveDefaultRegion()
+	clientCredentials, err := deps.getClientCreds(ssoRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +420,7 @@ func getCachedSSOFlowWithDeps(org appconfig.Organization, deps loginDeps) (*SSOF
 		return nil, fmt.Errorf("Unable to get client credentials, please login with this CLI and then try again")
 	}
 
-	ssoToken, err := deps.getToken(org.URL, org.Region)
+	ssoToken, err := deps.getToken(org.URL, ssoRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -429,18 +434,19 @@ func getCachedSSOFlowWithDeps(org appconfig.Organization, deps loginDeps) (*SSOF
 		return nil, err
 	}
 
-	ssoClient, err := deps.newSSOClient(context.Background(), org.Region)
+	ssoClient, err := deps.newSSOClient(context.Background(), ssoRegion)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SSOFlow{
-		accessToken: &ssoToken.AccessToken,
-		ssoClient:   ssoClient,
-		configFile:  file,
-		ssoRegion:   &org.Region,
-		ssoStartUrl: &org.URL,
-		orgName:     org.Name,
-		prefix:      org.Prefix,
+		accessToken:   &ssoToken.AccessToken,
+		ssoClient:     ssoClient,
+		configFile:    file,
+		ssoRegion:     &ssoRegion,
+		defaultRegion: &defaultRegion,
+		ssoStartUrl:   &org.URL,
+		orgName:       org.Name,
+		prefix:        org.Prefix,
 	}, nil
 }
