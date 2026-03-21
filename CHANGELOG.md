@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.3.5](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.4...1.3.5) (2026-03-21)
+
+
+### Bug Fixes
+
+* updated nix vendor hash ([ef8c327](https://github.com/JorgeReus/aws-sso-creds/commit/ef8c327f767e04a656e68d17188cda514539eee5))
+
 ## [1.3.4](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.3...1.3.4) (2026-03-20)
 
 
