@@ -21,27 +21,48 @@
 aws-sso-creds init
 ```
 
+### Helpful Aliases
+
+If you use the CLI often, these shell aliases remove most of the repetitive typing:
+
+```bash
+alias ao='aws-sso-creds open'
+alias aps='eval "export AWS_PROFILE=$(aws-sso-creds select)"'
+alias ac='aws-sso-creds -p'
+```
+
+- `aps` runs `aws-sso-creds select` and exports the selected profile for you, so you do not need to run `export AWS_PROFILE=...` manually.
+- `ao` is a short alias for `aws-sso-creds open`.
+- `ac` is a short alias for `aws-sso-creds -p`, which populates roles for the organization you pass in.
+
 3. Generate profiles for one configured organization:
 
 ```bash
 aws-sso-creds my-org --populateRoles
 ```
 
-4. Pick a profile from the fuzzy finder:
+4. Pick and export a profile in one step:
 
 ```bash
-aws-sso-creds select
+aps
 ```
 
-5. Export the selected profile:
+This is equivalent to:
+
+```bash
+export AWS_PROFILE=$(aws-sso-creds select)
+```
+
+5. Open the AWS console for the active profile:
+
+```bash
+ao
+```
+
+Manual equivalent:
 
 ```bash
 export AWS_PROFILE=my-org-admin
-```
-
-6. Open the AWS console for the active profile:
-
-```bash
 aws-sso-creds open
 ```
 
