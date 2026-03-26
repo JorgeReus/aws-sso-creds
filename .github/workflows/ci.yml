@@ -22,6 +22,24 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up mise
+        uses: jdx/mise-action@v3
+
+      - name: Install lint tools
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export GOBIN="$RUNNER_TEMP/bin"
+          echo "$GOBIN" >> "$GITHUB_PATH"
+
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3
+          go install github.com/incu6us/goimports-reviser/v3@v3.12.6
+          go install github.com/segmentio/golines@latest
+
+      - name: Run lint
+        run: mise lint
+
       - name: Run tests with package coverage gate
         shell: bash
         run: |

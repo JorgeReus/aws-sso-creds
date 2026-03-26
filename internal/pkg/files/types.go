@@ -1,7 +1,7 @@
 package files
 
 import (
-	"gopkg.in/ini.v1"
+	ini "gopkg.in/ini.v1"
 )
 
 type AWSFile struct {

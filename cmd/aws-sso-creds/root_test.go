@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
-	"github.com/spf13/cobra"
 )
 
 func TestRootHelpShowsVersion(t *testing.T) {
@@ -101,7 +102,9 @@ func TestBuildVersionUsesEmbeddedReleaseVersionForPseudoVersions(t *testing.T) {
 	version = "dirty"
 	embeddedReleaseVersion = "1.3.1"
 	readBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{Main: debug.Module{Version: "0.0.0-20260320055032-ea193b1e49c4"}}, true
+		return &debug.BuildInfo{
+			Main: debug.Module{Version: "0.0.0-20260320055032-ea193b1e49c4"},
+		}, true
 	}
 
 	if got := buildVersion(); got != "1.3.1" {
@@ -123,7 +126,7 @@ func TestRootCommandReturnsOrgNotFoundError(t *testing.T) {
 	cmd.SetArgs([]string{"missing"})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "Organization 'missing' not found") {
+	if err == nil || !strings.Contains(err.Error(), "organization 'missing' not found") {
 		t.Fatalf("Execute() error = %v, want org not found", err)
 	}
 }
@@ -204,7 +207,12 @@ func TestExecuteUsesFactoryHomeDir(t *testing.T) {
 			config.SetInstanceForTest(&config.Config{
 				Home: home,
 				Orgs: map[string]config.Organization{
-					"dev": {Name: "dev", Prefix: "dev", URL: "https://dev.awsapps.com/start", Region: "us-east-1"},
+					"dev": {
+						Name:   "dev",
+						Prefix: "dev",
+						URL:    "https://dev.awsapps.com/start",
+						Region: "us-east-1",
+					},
 				},
 			})
 			return nil

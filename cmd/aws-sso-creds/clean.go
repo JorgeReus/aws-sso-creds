@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	"github.com/spf13/cobra"
 )
 
 type cleanDeps struct {
@@ -78,7 +79,7 @@ func newCleanCmd(deps cleanDeps) *cobra.Command {
 			if len(args) == 1 {
 				if _, ok := config.GetInstance().Orgs[args[0]]; !ok {
 					return fmt.Errorf(
-						"Organization '%s' not found in config file %s",
+						"organization '%s' not found in config file %s",
 						args[0],
 						configPath,
 					)

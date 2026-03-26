@@ -1,0 +1,11 @@
+[tasks.lint]
+description = "Normalize Go files with formatting tools, then run lint checks"
+run = """
+goimports-reviser -rm-unused -set-alias -format ./...
+golines -w .
+golangci-lint run
+"""
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."

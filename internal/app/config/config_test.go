@@ -118,7 +118,7 @@ url = "https://dev.awsapps.com/start"
 	if err == nil {
 		t.Fatal("Init() error = nil, want validation error")
 	}
-	if !strings.Contains(err.Error(), "Missing required attributes") {
+	if !strings.Contains(err.Error(), "missing required attributes") {
 		t.Fatalf("Init() error = %q, want validation message", err)
 	}
 }

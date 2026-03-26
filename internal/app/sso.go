@@ -8,10 +8,6 @@ import (
 	"sync"
 	"time"
 
-	appconfig "github.com/JorgeReus/aws-sso-creds/internal/app/config"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/cache"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
 	awsv2config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sso"
@@ -19,6 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	ssooidctypes "github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
 	"github.com/pkg/browser"
+
+	appconfig "github.com/JorgeReus/aws-sso-creds/internal/app/config"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/cache"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 )
 
 const (
@@ -134,8 +135,11 @@ func loginWithDeps(
 		}
 
 		msgBus.Send(bus.BusMsg{
-			MsgType:  bus.MSG_TYPE_INFO,
-			Contents: fmt.Sprintln(fmt.Sprintf("The code received is %s, please verify accordingly", *response.UserCode)),
+			MsgType: bus.MSG_TYPE_INFO,
+			Contents: fmt.Sprintf(
+				"The code received is %s, please verify accordingly\n",
+				*response.UserCode,
+			),
 		})
 
 		if !noBrowser {
@@ -144,8 +148,11 @@ func loginWithDeps(
 
 		if err != nil || noBrowser {
 			msgBus.Send(bus.BusMsg{
-				MsgType:  bus.MSG_TYPE_ERR,
-				Contents: fmt.Sprintf("Can't open your browser, open this URL mannually: %s", *response.VerificationUriComplete),
+				MsgType: bus.MSG_TYPE_ERR,
+				Contents: fmt.Sprintf(
+					"Can't open your browser, open this URL mannually: %s",
+					*response.VerificationUriComplete,
+				),
 			})
 			msgBus.Recv()
 		}
@@ -160,7 +167,6 @@ func loginWithDeps(
 				GrantType:    &grantType,
 			}
 			createTokenOutput, err := oidcClient.CreateToken(ctx, &createTokenInput)
-
 			if err != nil {
 				var pendingErr *ssooidctypes.AuthorizationPendingException
 				if errors.As(err, &pendingErr) {
@@ -173,7 +179,9 @@ func loginWithDeps(
 				StartUrl:    org.URL,
 				Region:      ssoRegion,
 				AccessToken: *createTokenOutput.AccessToken,
-				ExpiresAt:   deps.now().Add(time.Second * time.Duration(createTokenOutput.ExpiresIn)).Format(time.RFC3339),
+				ExpiresAt: deps.now().
+					Add(time.Second * time.Duration(createTokenOutput.ExpiresIn)).
+					Format(time.RFC3339),
 			}
 
 			if err := deps.saveToken(ssoToken, org.URL); err != nil {
@@ -253,7 +261,12 @@ func (s *SSOFlow) getAccountRoles(
 				body += part
 			}
 		}
-		sectionName := fmt.Sprintf("profile %s:%s:%s", s.prefix, body, awsv2.ToString(role.RoleName))
+		sectionName := fmt.Sprintf(
+			"profile %s:%s:%s",
+			s.prefix,
+			body,
+			awsv2.ToString(role.RoleName),
+		)
 
 		section, err := s.configFile.File.NewSection(sectionName)
 		if err != nil {
@@ -261,14 +274,25 @@ func (s *SSOFlow) getAccountRoles(
 			break
 		}
 
-		section.NewKey("sso_start_url", *s.ssoStartUrl)
-		section.NewKey("sso_region", *s.ssoRegion)
-		section.NewKey("sso_account_name", awsv2.ToString(acc.AccountName))
-		section.NewKey("sso_account_id", awsv2.ToString(acc.AccountId))
-		section.NewKey("sso_role_name", awsv2.ToString(role.RoleName))
-		section.NewKey("region", *s.defaultRegion)
-		section.NewKey("org", s.orgName)
-		section.NewKey("sso_auto_populated", "true")
+		keys := map[string]string{
+			"sso_start_url":      *s.ssoStartUrl,
+			"sso_region":         *s.ssoRegion,
+			"sso_account_name":   awsv2.ToString(acc.AccountName),
+			"sso_account_id":     awsv2.ToString(acc.AccountId),
+			"sso_role_name":      awsv2.ToString(role.RoleName),
+			"region":             *s.defaultRegion,
+			"org":                s.orgName,
+			"sso_auto_populated": "true",
+		}
+		for key, value := range keys {
+			if _, err := section.NewKey(key, value); err != nil {
+				result.err = err
+				break
+			}
+		}
+		if result.err != nil {
+			break
+		}
 	}
 	channel <- result
 	wg.Done()
@@ -353,19 +377,30 @@ func (s *SSOFlow) GetCredentials() ([]CredentialsResult, error) {
 			})
 			continue
 		}
-		profName := fmt.Sprintf("%s:%s", tempCredsPrefix, strings.TrimPrefix(item.roleName, "profile "))
+		profName := fmt.Sprintf(
+			"%s:%s",
+			tempCredsPrefix,
+			strings.TrimPrefix(item.roleName, "profile "),
+		)
 		credsSection, err := creds.File.NewSection(profName)
 		if err != nil {
 			return nil, item.err
 		}
 		expiresTime := item.creds.RoleCredentials.Expiration / 1000
-		credsSection.NewKey("aws_access_key_id", *item.creds.RoleCredentials.AccessKeyId)
-		credsSection.NewKey("aws_secret_access_key", *item.creds.RoleCredentials.SecretAccessKey)
-		credsSection.NewKey("aws_session_token", *item.creds.RoleCredentials.SessionToken)
-		credsSection.NewKey("issued_time", fmt.Sprint(time.Now().Unix()))
-		credsSection.NewKey("expires_time", fmt.Sprint(expiresTime))
-		credsSection.NewKey("org", s.orgName)
-		credsSection.NewKey("sso_auto_populated", "true")
+		keys := map[string]string{
+			"aws_access_key_id":     *item.creds.RoleCredentials.AccessKeyId,
+			"aws_secret_access_key": *item.creds.RoleCredentials.SecretAccessKey,
+			"aws_session_token":     *item.creds.RoleCredentials.SessionToken,
+			"issued_time":           fmt.Sprint(time.Now().Unix()),
+			"expires_time":          fmt.Sprint(expiresTime),
+			"org":                   s.orgName,
+			"sso_auto_populated":    "true",
+		}
+		for key, value := range keys {
+			if _, err := credsSection.NewKey(key, value); err != nil {
+				return nil, err
+			}
+		}
 
 		result = append(result, CredentialsResult{
 			ProfileName:  profName,
@@ -396,7 +431,10 @@ func (s *SSOFlow) getRoleCreds(
 	}
 }
 
-func (s *SSOFlow) GetCredsByRoleName(roleName string, accountID string) (*sso.GetRoleCredentialsOutput, error) {
+func (s *SSOFlow) GetCredsByRoleName(
+	roleName string,
+	accountID string,
+) (*sso.GetRoleCredentialsOutput, error) {
 	return s.ssoClient.GetRoleCredentials(context.Background(), &sso.GetRoleCredentialsInput{
 		AccessToken: s.accessToken,
 		AccountId:   &accountID,
@@ -417,7 +455,9 @@ func getCachedSSOFlowWithDeps(org appconfig.Organization, deps loginDeps) (*SSOF
 	}
 
 	if clientCredentials == nil {
-		return nil, fmt.Errorf("Unable to get client credentials, please login with this CLI and then try again")
+		return nil, fmt.Errorf(
+			"unable to get client credentials, please login with this CLI and then try again",
+		)
 	}
 
 	ssoToken, err := deps.getToken(org.URL, ssoRegion)
@@ -426,7 +466,9 @@ func getCachedSSOFlowWithDeps(org appconfig.Organization, deps loginDeps) (*SSOF
 	}
 
 	if ssoToken == nil {
-		return nil, fmt.Errorf("Unable to get sso token, please login with this CLI and then try again")
+		return nil, fmt.Errorf(
+			"unable to get sso token, please login with this CLI and then try again",
+		)
 	}
 
 	file, err := deps.newConfigFile(appconfig.GetInstance().Home)

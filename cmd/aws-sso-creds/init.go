@@ -8,8 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/spf13/cobra"
+
+	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 )
 
 type valueValidator func(string) error
@@ -81,7 +82,12 @@ func (p promptSession) promptValue(label string, validator valueValidator) (stri
 	}
 }
 
-func promptValue(in io.Reader, out io.Writer, label string, validator valueValidator) (string, error) {
+func promptValue(
+	in io.Reader,
+	out io.Writer,
+	label string,
+	validator valueValidator,
+) (string, error) {
 	return promptSession{reader: bufio.NewReader(in), out: out}.promptValue(label, validator)
 }
 
@@ -105,7 +111,10 @@ func runInitCommand(deps initDeps) error {
 	if err != nil {
 		return err
 	}
-	defaultRegion, err := prompts.promptValue("Default AWS region (optional, press enter to use the SSO region)", nil)
+	defaultRegion, err := prompts.promptValue(
+		"Default AWS region (optional, press enter to use the SSO region)",
+		nil,
+	)
 	if err != nil {
 		return err
 	}

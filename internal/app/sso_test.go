@@ -10,16 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/cache"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sso"
 	ssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	ssooidctypes "github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
-	"gopkg.in/ini.v1"
+	ini "gopkg.in/ini.v1"
+
+	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/cache"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 )
 
 type fakeOIDCClient struct {
@@ -32,15 +33,27 @@ type fakeOIDCClient struct {
 	tokenCalls  int
 }
 
-func (f *fakeOIDCClient) RegisterClient(context.Context, *ssooidc.RegisterClientInput, ...func(*ssooidc.Options)) (*ssooidc.RegisterClientOutput, error) {
+func (f *fakeOIDCClient) RegisterClient(
+	context.Context,
+	*ssooidc.RegisterClientInput,
+	...func(*ssooidc.Options),
+) (*ssooidc.RegisterClientOutput, error) {
 	return f.registerOut, f.registerErr
 }
 
-func (f *fakeOIDCClient) StartDeviceAuthorization(context.Context, *ssooidc.StartDeviceAuthorizationInput, ...func(*ssooidc.Options)) (*ssooidc.StartDeviceAuthorizationOutput, error) {
+func (f *fakeOIDCClient) StartDeviceAuthorization(
+	context.Context,
+	*ssooidc.StartDeviceAuthorizationInput,
+	...func(*ssooidc.Options),
+) (*ssooidc.StartDeviceAuthorizationOutput, error) {
 	return f.startOut, f.startErr
 }
 
-func (f *fakeOIDCClient) CreateToken(context.Context, *ssooidc.CreateTokenInput, ...func(*ssooidc.Options)) (*ssooidc.CreateTokenOutput, error) {
+func (f *fakeOIDCClient) CreateToken(
+	context.Context,
+	*ssooidc.CreateTokenInput,
+	...func(*ssooidc.Options),
+) (*ssooidc.CreateTokenOutput, error) {
 	idx := f.tokenCalls
 	f.tokenCalls++
 	if idx < len(f.tokenErrs) && f.tokenErrs[idx] != nil {
@@ -64,7 +77,11 @@ type fakeSSOClient struct {
 	roleCredsErrs   map[string]error
 }
 
-func (f *fakeSSOClient) ListAccounts(context.Context, *sso.ListAccountsInput, ...func(*sso.Options)) (*sso.ListAccountsOutput, error) {
+func (f *fakeSSOClient) ListAccounts(
+	context.Context,
+	*sso.ListAccountsInput,
+	...func(*sso.Options),
+) (*sso.ListAccountsOutput, error) {
 	if f.listAccountsErr != nil {
 		return nil, f.listAccountsErr
 	}
@@ -76,7 +93,11 @@ func (f *fakeSSOClient) ListAccounts(context.Context, *sso.ListAccountsInput, ..
 	return &sso.ListAccountsOutput{}, nil
 }
 
-func (f *fakeSSOClient) ListAccountRoles(_ context.Context, input *sso.ListAccountRolesInput, _ ...func(*sso.Options)) (*sso.ListAccountRolesOutput, error) {
+func (f *fakeSSOClient) ListAccountRoles(
+	_ context.Context,
+	input *sso.ListAccountRolesInput,
+	_ ...func(*sso.Options),
+) (*sso.ListAccountRolesOutput, error) {
 	if f.listRoleErr != nil {
 		return nil, f.listRoleErr
 	}
@@ -90,7 +111,11 @@ func (f *fakeSSOClient) ListAccountRoles(_ context.Context, input *sso.ListAccou
 	return resp, nil
 }
 
-func (f *fakeSSOClient) GetRoleCredentials(_ context.Context, input *sso.GetRoleCredentialsInput, _ ...func(*sso.Options)) (*sso.GetRoleCredentialsOutput, error) {
+func (f *fakeSSOClient) GetRoleCredentials(
+	_ context.Context,
+	input *sso.GetRoleCredentialsInput,
+	_ ...func(*sso.Options),
+) (*sso.GetRoleCredentialsOutput, error) {
 	roleName := awsv2.ToString(input.RoleName)
 	if err, ok := f.roleCredsErrs[roleName]; ok {
 		return nil, err
@@ -111,7 +136,11 @@ func TestLoginUsesCachedCredentialsAndTokenWithoutRegisteringClient(t *testing.T
 		return nil, errors.New("oidc config failed")
 	}
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
-		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: future}, nil
+		return &cache.SSOClientCredentials{
+			ClientId:     "id",
+			ClientSecret: "secret",
+			ExpiresAt:    future,
+		}, nil
 	}
 	deps.getToken = func(string, string) (*cache.SSOToken, error) {
 		return &cache.SSOToken{AccessToken: "token", ExpiresAt: future}, nil
@@ -148,7 +177,9 @@ func TestLoginForceAuthRegistersClientAndPollsUntilTokenIssued(t *testing.T) {
 			Interval:                1,
 			DeviceCode:              awsv2.String("device"),
 		},
-		tokenErrs: []error{&ssooidctypes.AuthorizationPendingException{Message: awsv2.String("pending")}},
+		tokenErrs: []error{
+			&ssooidctypes.AuthorizationPendingException{Message: awsv2.String("pending")},
+		},
 		tokenOuts: []*ssooidc.CreateTokenOutput{
 			nil,
 			{AccessToken: awsv2.String("fresh-token"), ExpiresIn: 3600},
@@ -243,12 +274,16 @@ func TestGetCachedSSOFlowReturnsErrorWhenTokenMissing(t *testing.T) {
 	home := setupAppConfig(t)
 	deps := defaultFakeLoginDeps(home)
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
-		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+		return &cache.SSOClientCredentials{
+			ClientId:     "id",
+			ClientSecret: "secret",
+			ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+		}, nil
 	}
 	deps.getToken = func(string, string) (*cache.SSOToken, error) { return nil, nil }
 
 	_, err := getCachedSSOFlowWithDeps(validOrg(), deps)
-	if err == nil || !strings.Contains(err.Error(), "Unable to get sso token") {
+	if err == nil || !strings.Contains(err.Error(), "unable to get sso token") {
 		t.Fatalf("getCachedSSOFlowWithDeps() error = %v, want missing token error", err)
 	}
 }
@@ -261,7 +296,13 @@ func TestLoginReturnsRegisterClientError(t *testing.T) {
 	}
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) { return nil, nil }
 
-	_, err := loginWithDeps(validOrg(), true, false, &bus.Bus{Channel: make(chan bus.BusMsg, 10)}, deps)
+	_, err := loginWithDeps(
+		validOrg(),
+		true,
+		false,
+		&bus.Bus{Channel: make(chan bus.BusMsg, 10)},
+		deps,
+	)
 	if err == nil || err.Error() != "register failed" {
 		t.Fatalf("loginWithDeps() error = %v, want register failed", err)
 	}
@@ -291,7 +332,13 @@ func TestLoginReturnsCreateTokenError(t *testing.T) {
 	deps.getToken = func(string, string) (*cache.SSOToken, error) { return nil, nil }
 	deps.sleep = func(time.Duration) {}
 
-	_, err := loginWithDeps(validOrg(), true, false, &bus.Bus{Channel: make(chan bus.BusMsg, 10)}, deps)
+	_, err := loginWithDeps(
+		validOrg(),
+		true,
+		false,
+		&bus.Bus{Channel: make(chan bus.BusMsg, 10)},
+		deps,
+	)
 	if err == nil || err.Error() != "token failed" {
 		t.Fatalf("loginWithDeps() error = %v, want token failed", err)
 	}
@@ -301,14 +348,27 @@ func TestLoginReturnsConfigFileErrorAfterAuth(t *testing.T) {
 	home := setupAppConfig(t)
 	deps := defaultFakeLoginDeps(home)
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
-		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+		return &cache.SSOClientCredentials{
+			ClientId:     "id",
+			ClientSecret: "secret",
+			ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+		}, nil
 	}
 	deps.getToken = func(string, string) (*cache.SSOToken, error) {
-		return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+		return &cache.SSOToken{
+			AccessToken: "token",
+			ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
+		}, nil
 	}
 	deps.newConfigFile = func(string) (*files.AWSFile, error) { return nil, errors.New("config file failed") }
 
-	_, err := loginWithDeps(validOrg(), false, false, &bus.Bus{Channel: make(chan bus.BusMsg, 10)}, deps)
+	_, err := loginWithDeps(
+		validOrg(),
+		false,
+		false,
+		&bus.Bus{Channel: make(chan bus.BusMsg, 10)},
+		deps,
+	)
 	if err == nil || err.Error() != "config file failed" {
 		t.Fatalf("loginWithDeps() error = %v, want config file failed", err)
 	}
@@ -320,11 +380,21 @@ func TestPopulateRolesCreatesConfigSectionsForPagedAccountsAndRoles(t *testing.T
 	ssoClient := &fakeSSOClient{
 		listAccountsOutputs: []*sso.ListAccountsOutput{
 			{
-				AccountList: []ssotypes.AccountInfo{{AccountId: awsv2.String("111111111111"), AccountName: awsv2.String("Dev Account")}},
-				NextToken:   awsv2.String("next"),
+				AccountList: []ssotypes.AccountInfo{
+					{
+						AccountId:   awsv2.String("111111111111"),
+						AccountName: awsv2.String("Dev Account"),
+					},
+				},
+				NextToken: awsv2.String("next"),
 			},
 			{
-				AccountList: []ssotypes.AccountInfo{{AccountId: awsv2.String("222222222222"), AccountName: awsv2.String("Prod Account")}},
+				AccountList: []ssotypes.AccountInfo{
+					{
+						AccountId:   awsv2.String("222222222222"),
+						AccountName: awsv2.String("Prod Account"),
+					},
+				},
 			},
 		},
 		listAccountRoles: map[string][]*sso.ListAccountRolesOutput{
@@ -375,7 +445,12 @@ func TestPopulateRolesUsesDefaultRegionWhenProvided(t *testing.T) {
 	ssoClient := &fakeSSOClient{
 		listAccountsOutputs: []*sso.ListAccountsOutput{
 			{
-				AccountList: []ssotypes.AccountInfo{{AccountId: awsv2.String("111111111111"), AccountName: awsv2.String("Dev Account")}},
+				AccountList: []ssotypes.AccountInfo{
+					{
+						AccountId:   awsv2.String("111111111111"),
+						AccountName: awsv2.String("Dev Account"),
+					},
+				},
 			},
 		},
 		listAccountRoles: map[string][]*sso.ListAccountRolesOutput{
@@ -405,7 +480,10 @@ func TestPopulateRolesUsesDefaultRegionWhenProvided(t *testing.T) {
 
 func TestPopulateRolesReturnsListAccountsError(t *testing.T) {
 	setupAppConfig(t)
-	flow := newTestFlow(newAWSFile(t), &fakeSSOClient{listAccountsErr: errors.New("accounts failed")})
+	flow := newTestFlow(
+		newAWSFile(t),
+		&fakeSSOClient{listAccountsErr: errors.New("accounts failed")},
+	)
 
 	_, err := flow.PopulateRoles()
 	if err == nil || err.Error() != "accounts failed" {
@@ -490,10 +568,17 @@ func TestGetCachedSSOFlowHappyPath(t *testing.T) {
 	home := setupAppConfig(t)
 	deps := defaultFakeLoginDeps(home)
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
-		return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+		return &cache.SSOClientCredentials{
+			ClientId:     "id",
+			ClientSecret: "secret",
+			ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+		}, nil
 	}
 	deps.getToken = func(string, string) (*cache.SSOToken, error) {
-		return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+		return &cache.SSOToken{
+			AccessToken: "token",
+			ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
+		}, nil
 	}
 
 	flow, err := getCachedSSOFlowWithDeps(validOrg(), deps)
@@ -511,7 +596,7 @@ func TestGetCachedSSOFlowReturnsMissingClientCredentialsError(t *testing.T) {
 	deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) { return nil, nil }
 
 	_, err := getCachedSSOFlowWithDeps(validOrg(), deps)
-	if err == nil || !strings.Contains(err.Error(), "Unable to get client credentials") {
+	if err == nil || !strings.Contains(err.Error(), "unable to get client credentials") {
 		t.Fatalf("getCachedSSOFlowWithDeps() error = %v, want missing creds error", err)
 	}
 }
@@ -523,10 +608,17 @@ func TestLoginWrapperUsesFactoryDeps(t *testing.T) {
 	loginDepsFactory = func() loginDeps {
 		deps := defaultFakeLoginDeps(home)
 		deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
-			return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+			return &cache.SSOClientCredentials{
+				ClientId:     "id",
+				ClientSecret: "secret",
+				ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+			}, nil
 		}
 		deps.getToken = func(string, string) (*cache.SSOToken, error) {
-			return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+			return &cache.SSOToken{
+				AccessToken: "token",
+				ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
+			}, nil
 		}
 		return deps
 	}
@@ -544,10 +636,17 @@ func TestGetCachedSSOFlowWrapperUsesFactoryDeps(t *testing.T) {
 	loginDepsFactory = func() loginDeps {
 		deps := defaultFakeLoginDeps(home)
 		deps.getClientCreds = func(string) (*cache.SSOClientCredentials, error) {
-			return &cache.SSOClientCredentials{ClientId: "id", ClientSecret: "secret", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+			return &cache.SSOClientCredentials{
+				ClientId:     "id",
+				ClientSecret: "secret",
+				ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+			}, nil
 		}
 		deps.getToken = func(string, string) (*cache.SSOToken, error) {
-			return &cache.SSOToken{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}, nil
+			return &cache.SSOToken{
+				AccessToken: "token",
+				ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
+			}, nil
 		}
 		return deps
 	}
@@ -573,7 +672,10 @@ func defaultFakeLoginDeps(home string) loginDeps {
 		getToken:  func(string, string) (*cache.SSOToken, error) { return nil, nil },
 		saveToken: func(*cache.SSOToken, string) error { return nil },
 		newConfigFile: func(string) (*files.AWSFile, error) {
-			return &files.AWSFile{File: ini.Empty(), Path: filepath.Join(home, ".aws", "config")}, nil
+			return &files.AWSFile{
+				File: ini.Empty(),
+				Path: filepath.Join(home, ".aws", "config"),
+			}, nil
 		},
 		openURL: func(string) error { return nil },
 		sleep:   func(time.Duration) {},

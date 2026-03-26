@@ -6,12 +6,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/pelletier/go-toml"
+	validator "github.com/go-playground/validator/v10"
+	toml "github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 )
-
-const configName = "aws-sso-creds"
 
 type Config struct {
 	Orgs             map[string]Organization `mapstructure:"organizations"     validate:"required,dive"`
@@ -24,15 +22,16 @@ type Config struct {
 }
 
 var c *Config
+
 var lock = &sync.Mutex{}
 
 type Organization struct {
 	Name          string `validate:"required"`
 	Prefix        string `validate:"required" mapstructure:"prefix"`
 	URL           string `validate:"required" mapstructure:"url"`
-	Region        string `mapstructure:"region"`
-	SSORegion     string `mapstructure:"sso_region"`
-	DefaultRegion string `mapstructure:"default_region"`
+	Region        string `                    mapstructure:"region"`
+	SSORegion     string `                    mapstructure:"sso_region"`
+	DefaultRegion string `                    mapstructure:"default_region"`
 }
 
 func (o Organization) EffectiveSSORegion() string {
@@ -133,11 +132,19 @@ func UpsertOrganizationConfig(configPath string, org Organization) error {
 				}
 				existingURL := tree.Get(fmt.Sprintf("organizations.%s.url", existingName))
 				if existingURL == org.URL {
-					return fmt.Errorf("organization %q already uses start URL %q", existingName, org.URL)
+					return fmt.Errorf(
+						"organization %q already uses start URL %q",
+						existingName,
+						org.URL,
+					)
 				}
 				existingPrefix := tree.Get(fmt.Sprintf("organizations.%s.prefix", existingName))
 				if existingPrefix == org.Prefix {
-					return fmt.Errorf("organization %q already uses prefix %q", existingName, org.Prefix)
+					return fmt.Errorf(
+						"organization %q already uses prefix %q",
+						existingName,
+						org.Prefix,
+					)
 				}
 			}
 		}
@@ -146,9 +153,15 @@ func UpsertOrganizationConfig(configPath string, org Organization) error {
 	orgPath := fmt.Sprintf("organizations.%s", org.Name)
 	tree.Set(fmt.Sprintf("%s.url", orgPath), org.URL)
 	tree.Set(fmt.Sprintf("%s.prefix", orgPath), org.Prefix)
-	tree.Delete(fmt.Sprintf("%s.region", orgPath))
-	tree.Delete(fmt.Sprintf("%s.sso_region", orgPath))
-	tree.Delete(fmt.Sprintf("%s.default_region", orgPath))
+	if err := tree.Delete(fmt.Sprintf("%s.region", orgPath)); err != nil {
+		return err
+	}
+	if err := tree.Delete(fmt.Sprintf("%s.sso_region", orgPath)); err != nil {
+		return err
+	}
+	if err := tree.Delete(fmt.Sprintf("%s.default_region", orgPath)); err != nil {
+		return err
+	}
 	tree.Set(fmt.Sprintf("%s.sso_region", orgPath), org.EffectiveSSORegion())
 	if org.DefaultRegion != "" && org.DefaultRegion != org.EffectiveSSORegion() {
 		tree.Set(fmt.Sprintf("%s.default_region", orgPath), org.DefaultRegion)
@@ -166,7 +179,7 @@ func Init(home string, configPath string) error {
 		viper.SetConfigFile(configPath)
 		if err := viper.ReadInConfig(); err != nil {
 			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				return fmt.Errorf("Error reading config file: %s", err)
+				return fmt.Errorf("error reading config file: %w", err)
 			}
 		}
 
@@ -182,11 +195,11 @@ func Init(home string, configPath string) error {
 
 		validate := validator.New()
 		if err := validate.Struct(&aux); err != nil {
-			return fmt.Errorf("Missing required attributes %v\n", err)
+			return fmt.Errorf("missing required attributes %v", err)
 		}
 		for name, org := range aux.Orgs {
 			if org.EffectiveSSORegion() == "" {
-				return fmt.Errorf("Missing required attributes organizations.%s.sso_region\n", name)
+				return fmt.Errorf("missing required attributes organizations.%s.sso_region", name)
 			}
 		}
 		c = &aux

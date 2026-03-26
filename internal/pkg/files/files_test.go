@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gopkg.in/ini.v1"
+	ini "gopkg.in/ini.v1"
 )
 
 type sectionSpec struct {
@@ -319,9 +319,15 @@ func TestCleanTemporaryRoles(t *testing.T) {
 			name: "removes matching organization entries",
 			org:  "dev",
 			sections: []sectionSpec{
-				{name: "profile keep-other-org", keys: map[string]string{"org": "prod", "sso_auto_populated": "true"}},
+				{
+					name: "profile keep-other-org",
+					keys: map[string]string{"org": "prod", "sso_auto_populated": "true"},
+				},
 				{name: "profile keep-manual", keys: map[string]string{"org": "dev"}},
-				{name: "profile remove-match", keys: map[string]string{"org": "dev", "sso_auto_populated": "true"}},
+				{
+					name: "profile remove-match",
+					keys: map[string]string{"org": "dev", "sso_auto_populated": "true"},
+				},
 			},
 			wantState: map[string]bool{
 				"profile keep-other-org": true,
@@ -334,8 +340,14 @@ func TestCleanTemporaryRoles(t *testing.T) {
 			org:  "",
 			sections: []sectionSpec{
 				{name: "profile keep-manual", keys: map[string]string{"org": "dev"}},
-				{name: "profile remove-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true"}},
-				{name: "profile remove-prod", keys: map[string]string{"org": "prod", "sso_auto_populated": "true"}},
+				{
+					name: "profile remove-dev",
+					keys: map[string]string{"org": "dev", "sso_auto_populated": "true"},
+				},
+				{
+					name: "profile remove-prod",
+					keys: map[string]string{"org": "prod", "sso_auto_populated": "true"},
+				},
 			},
 			wantState: map[string]bool{
 				"profile keep-manual": true,
@@ -370,12 +382,46 @@ func TestCleanExpiredCredentials(t *testing.T) {
 			org:    "dev",
 			cutoff: 150,
 			sections: []sectionSpec{
-				{name: "profile expired-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "100"}},
-				{name: "profile active-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "200"}},
-				{name: "profile expired-prod", keys: map[string]string{"org": "prod", "sso_auto_populated": "true", "expires_time": "50"}},
-				{name: "profile manual-expired", keys: map[string]string{"org": "dev", "expires_time": "25"}},
-				{name: "profile invalid-expiration", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "bad"}},
-				{name: "profile missing-expiration", keys: map[string]string{"org": "dev", "sso_auto_populated": "true"}},
+				{
+					name: "profile expired-dev",
+					keys: map[string]string{
+						"org":                "dev",
+						"sso_auto_populated": "true",
+						"expires_time":       "100",
+					},
+				},
+				{
+					name: "profile active-dev",
+					keys: map[string]string{
+						"org":                "dev",
+						"sso_auto_populated": "true",
+						"expires_time":       "200",
+					},
+				},
+				{
+					name: "profile expired-prod",
+					keys: map[string]string{
+						"org":                "prod",
+						"sso_auto_populated": "true",
+						"expires_time":       "50",
+					},
+				},
+				{
+					name: "profile manual-expired",
+					keys: map[string]string{"org": "dev", "expires_time": "25"},
+				},
+				{
+					name: "profile invalid-expiration",
+					keys: map[string]string{
+						"org":                "dev",
+						"sso_auto_populated": "true",
+						"expires_time":       "bad",
+					},
+				},
+				{
+					name: "profile missing-expiration",
+					keys: map[string]string{"org": "dev", "sso_auto_populated": "true"},
+				},
 			},
 			wantState: map[string]bool{
 				"profile expired-dev":        false,
@@ -391,8 +437,22 @@ func TestCleanExpiredCredentials(t *testing.T) {
 			org:    "dev",
 			cutoff: 50,
 			sections: []sectionSpec{
-				{name: "profile future-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "500"}},
-				{name: "profile future-prod", keys: map[string]string{"org": "prod", "sso_auto_populated": "true", "expires_time": "500"}},
+				{
+					name: "profile future-dev",
+					keys: map[string]string{
+						"org":                "dev",
+						"sso_auto_populated": "true",
+						"expires_time":       "500",
+					},
+				},
+				{
+					name: "profile future-prod",
+					keys: map[string]string{
+						"org":                "prod",
+						"sso_auto_populated": "true",
+						"expires_time":       "500",
+					},
+				},
 			},
 			wantState: map[string]bool{
 				"profile future-dev":  true,

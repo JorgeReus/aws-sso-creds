@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bigkevmcd/go-configparser"
-	"github.com/ktr0731/go-fuzzyfinder"
+	configparser "github.com/bigkevmcd/go-configparser"
+	fuzzyfinder "github.com/ktr0731/go-fuzzyfinder"
 )
 
 func TestNewFuzzyPreviewerLoadsCredentialsAndRoles(t *testing.T) {
@@ -127,7 +127,10 @@ func TestPreviewReturnsFinderError(t *testing.T) {
 	fp := &FuzzyPreviewer{
 		outputSections: []string{"(SSO profile) dev:Admin"},
 		rolesMapping:   &map[string]string{"(SSO profile) dev:Admin": "profile dev:Admin"},
-		entries:        mustPreviewEntries(t, map[string]map[string]string{"profile dev:Admin": {"org": "dev"}}),
+		entries: mustPreviewEntries(
+			t,
+			map[string]map[string]string{"profile dev:Admin": {"org": "dev"}},
+		),
 	}
 
 	_, err := fp.Preview()
@@ -136,7 +139,10 @@ func TestPreviewReturnsFinderError(t *testing.T) {
 	}
 }
 
-func mustPreviewEntries(t *testing.T, sections map[string]map[string]string) *configparser.ConfigParser {
+func mustPreviewEntries(
+	t *testing.T,
+	sections map[string]map[string]string,
+) *configparser.ConfigParser {
 	t.Helper()
 	entries := configparser.New()
 	for section, items := range sections {
@@ -144,7 +150,9 @@ func mustPreviewEntries(t *testing.T, sections map[string]map[string]string) *co
 			t.Fatalf("AddSection() error = %v", err)
 		}
 		for k, v := range items {
-			entries.Set(section, k, v)
+			if err := entries.Set(section, k, v); err != nil {
+				t.Fatalf("Set(%s, %s) error = %v", section, k, err)
+			}
 		}
 	}
 	return entries

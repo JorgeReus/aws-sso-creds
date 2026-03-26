@@ -4,8 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	fuzzyfinder "github.com/ktr0731/go-fuzzyfinder"
+
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
-	"github.com/ktr0731/go-fuzzyfinder"
 )
 
 type fakePreviewer struct {
@@ -120,7 +121,8 @@ func TestSelectCommandReturnsEnvValueOnAbort(t *testing.T) {
 
 func TestDefaultSelectDepsProvidesFunctions(t *testing.T) {
 	deps := defaultSelectDeps()
-	if deps.initConfig == nil || deps.newFuzzyPreviewer == nil || deps.println == nil || deps.getenv == nil {
+	if deps.initConfig == nil || deps.newFuzzyPreviewer == nil || deps.println == nil ||
+		deps.getenv == nil {
 		t.Fatal("defaultSelectDeps() returned nil dependency")
 	}
 }

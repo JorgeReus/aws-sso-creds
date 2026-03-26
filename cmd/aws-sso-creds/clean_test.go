@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	ini "gopkg.in/ini.v1"
+
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	"gopkg.in/ini.v1"
 )
 
 func TestCleanCommandRejectsExpiredWithoutCredentialsScope(t *testing.T) {
@@ -58,7 +59,7 @@ func TestCleanCommandReturnsOrgNotFoundError(t *testing.T) {
 	cmd.SetArgs([]string{"missing"})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "Organization 'missing' not found") {
+	if err == nil || !strings.Contains(err.Error(), "organization 'missing' not found") {
 		t.Fatalf("Execute() error = %v, want org not found", err)
 	}
 }

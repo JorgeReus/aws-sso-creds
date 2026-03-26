@@ -3,16 +3,17 @@ package awsssocreds
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
+
+	awssso "github.com/aws/aws-sdk-go-v2/service/sso"
+	"github.com/pkg/browser"
+	"github.com/spf13/cobra"
 
 	appsso "github.com/JorgeReus/aws-sso-creds/internal/app"
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
-	awssso "github.com/aws/aws-sdk-go-v2/service/sso"
-	"github.com/pkg/browser"
-	"github.com/spf13/cobra"
 )
 
 type openDeps struct {
@@ -33,9 +34,11 @@ var openDepsFactory = defaultOpenDeps
 
 func defaultOpenDeps() openDeps {
 	return openDeps{
-		initConfig:  config.Init,
-		getenv:      os.Getenv,
-		openConsole: func(roleName string, sessionDuration uint) error { return openConsoleWithDeps(roleName, sessionDuration, defaultOpenDeps()) },
+		initConfig: config.Init,
+		getenv:     os.Getenv,
+		openConsole: func(roleName string, sessionDuration uint) error {
+			return openConsoleWithDeps(roleName, sessionDuration, defaultOpenDeps())
+		},
 		newConfigFile: files.NewConfigFile,
 		getCachedFlow: func(org config.Organization) (cachedFlow, error) {
 			return appsso.GetCachedSSOFlow(org)
@@ -60,7 +63,7 @@ aws-sso-creds open`,
 
 			profile := deps.getenv("AWS_PROFILE")
 			if profile == "" {
-				return fmt.Errorf("The AWS_PROFILE env var must must be set to a valid SSO profile")
+				return fmt.Errorf("the AWS_PROFILE env var must must be set to a valid SSO profile")
 			}
 			return deps.openConsole(profile, 3600)
 		},
@@ -99,7 +102,7 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 	}
 	encodedSession, err := session.Encode()
 	if err != nil {
-		return fmt.Errorf("Unable to encode session %w", err)
+		return fmt.Errorf("unable to encode session: %w", err)
 	}
 
 	url := fmt.Sprintf("%s?Action=getSigninToken&SessionDuration=%d&Session=%s",
@@ -107,10 +110,12 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 
 	resp, err := deps.httpGet(url)
 	if err != nil {
-		return fmt.Errorf("Unable to login to AWS: %s with %s", appsso.AWS_FEDERATED_URL, roleName)
+		return fmt.Errorf("unable to login to AWS: %s with %s", appsso.AWS_FEDERATED_URL, roleName)
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -118,7 +123,7 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 	loginResponse := appsso.LoginResponse{}
 	err = json.Unmarshal(body, &loginResponse)
 	if err != nil {
-		return fmt.Errorf("Error parsing Login response: %s", err.Error())
+		return fmt.Errorf("error parsing login response: %w", err)
 	}
 	login := appsso.LoginUrlParams{
 		Issuer:      ssoStartUrl,
@@ -130,7 +135,7 @@ func openConsoleWithDeps(roleName string, sessionDuration uint, deps openDeps) e
 
 	err = deps.openURL(loginURL)
 	if err != nil {
-		return fmt.Errorf("Can't open your browser, open this URL mannually: %s", loginURL)
+		return fmt.Errorf("can't open your browser, open this URL mannually: %s", loginURL)
 	}
 	return nil
 }
