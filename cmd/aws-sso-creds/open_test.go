@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
-	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
 	awssso "github.com/aws/aws-sdk-go-v2/service/sso"
 	awsssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
-	"gopkg.in/ini.v1"
+	ini "gopkg.in/ini.v1"
+
+	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
+	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 )
 
 type fakeCachedFlow struct {
@@ -23,7 +24,10 @@ type fakeCachedFlow struct {
 	err   error
 }
 
-func (f fakeCachedFlow) GetCredsByRoleName(roleName string, accountId string) (*awssso.GetRoleCredentialsOutput, error) {
+func (f fakeCachedFlow) GetCredsByRoleName(
+	roleName string,
+	accountId string,
+) (*awssso.GetRoleCredentialsOutput, error) {
 	return f.creds, f.err
 }
 
@@ -88,7 +92,10 @@ func TestOpenCommandReturnsInitConfigError(t *testing.T) {
 
 func TestOpenConsoleWithDepsBuildsSigninURL(t *testing.T) {
 	setupOpenConfig(t)
-	cfgFile := &files.AWSFile{File: ini.Empty(), Path: filepath.Join(config.GetInstance().Home, ".aws", "config")}
+	cfgFile := &files.AWSFile{
+		File: ini.Empty(),
+		Path: filepath.Join(config.GetInstance().Home, ".aws", "config"),
+	}
 	section, _ := cfgFile.File.NewSection("profile dev:Admin")
 	_, _ = section.NewKey("org", "dev")
 	_, _ = section.NewKey("sso_role_name", "Admin")
@@ -160,7 +167,10 @@ func TestOpenConsoleWithDepsBuildsSigninURL(t *testing.T) {
 
 func TestOpenConsoleWithDepsReturnsBrowserOpenError(t *testing.T) {
 	setupOpenConfig(t)
-	cfgFile := &files.AWSFile{File: ini.Empty(), Path: filepath.Join(config.GetInstance().Home, ".aws", "config")}
+	cfgFile := &files.AWSFile{
+		File: ini.Empty(),
+		Path: filepath.Join(config.GetInstance().Home, ".aws", "config"),
+	}
 	section, _ := cfgFile.File.NewSection("profile dev:Admin")
 	_, _ = section.NewKey("org", "dev")
 	_, _ = section.NewKey("sso_role_name", "Admin")
@@ -188,14 +198,17 @@ func TestOpenConsoleWithDepsReturnsBrowserOpenError(t *testing.T) {
 		},
 		openURL: func(string) error { return errors.New("no browser") },
 	})
-	if err == nil || !strings.Contains(err.Error(), "Can't open your browser") {
+	if err == nil || !strings.Contains(err.Error(), "can't open your browser") {
 		t.Fatalf("openConsoleWithDeps() error = %v, want browser error", err)
 	}
 }
 
 func TestOpenConsoleWithDepsReturnsHTTPError(t *testing.T) {
 	setupOpenConfig(t)
-	cfgFile := &files.AWSFile{File: ini.Empty(), Path: filepath.Join(config.GetInstance().Home, ".aws", "config")}
+	cfgFile := &files.AWSFile{
+		File: ini.Empty(),
+		Path: filepath.Join(config.GetInstance().Home, ".aws", "config"),
+	}
 	section, _ := cfgFile.File.NewSection("profile dev:Admin")
 	_, _ = section.NewKey("org", "dev")
 	_, _ = section.NewKey("sso_role_name", "Admin")
@@ -219,14 +232,17 @@ func TestOpenConsoleWithDepsReturnsHTTPError(t *testing.T) {
 		httpGet: func(string) (*http.Response, error) { return nil, errors.New("down") },
 		openURL: func(string) error { return nil },
 	})
-	if err == nil || !strings.Contains(err.Error(), "Unable to login to AWS") {
+	if err == nil || !strings.Contains(err.Error(), "unable to login to AWS") {
 		t.Fatalf("openConsoleWithDeps() error = %v, want http error", err)
 	}
 }
 
 func TestOpenConsoleWithDepsReturnsJSONError(t *testing.T) {
 	setupOpenConfig(t)
-	cfgFile := &files.AWSFile{File: ini.Empty(), Path: filepath.Join(config.GetInstance().Home, ".aws", "config")}
+	cfgFile := &files.AWSFile{
+		File: ini.Empty(),
+		Path: filepath.Join(config.GetInstance().Home, ".aws", "config"),
+	}
 	section, _ := cfgFile.File.NewSection("profile dev:Admin")
 	_, _ = section.NewKey("org", "dev")
 	_, _ = section.NewKey("sso_role_name", "Admin")
@@ -252,14 +268,16 @@ func TestOpenConsoleWithDepsReturnsJSONError(t *testing.T) {
 		},
 		openURL: func(string) error { return nil },
 	})
-	if err == nil || !strings.Contains(err.Error(), "Error parsing Login response") {
+	if err == nil || !strings.Contains(err.Error(), "error parsing login response") {
 		t.Fatalf("openConsoleWithDeps() error = %v, want json error", err)
 	}
 }
 
 func TestDefaultOpenDepsProvidesFunctions(t *testing.T) {
 	deps := defaultOpenDeps()
-	if deps.initConfig == nil || deps.getenv == nil || deps.openConsole == nil || deps.httpGet == nil || deps.openURL == nil {
+	if deps.initConfig == nil || deps.getenv == nil || deps.openConsole == nil ||
+		deps.httpGet == nil ||
+		deps.openURL == nil {
 		t.Fatal("defaultOpenDeps() returned nil dependency")
 	}
 }

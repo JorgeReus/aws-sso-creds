@@ -30,7 +30,8 @@ func TestUpsertOrganizationConfigCreatesNewConfigWithDefaults(t *testing.T) {
 		t.Fatalf("ErrorColor = %q, want default", cfg.ErrorColor)
 	}
 	org := cfg.Orgs["dev"]
-	if org.URL != "https://dev.awsapps.com/start" || org.Prefix != "dev" || org.EffectiveSSORegion() != "us-east-1" {
+	if org.URL != "https://dev.awsapps.com/start" || org.Prefix != "dev" ||
+		org.EffectiveSSORegion() != "us-east-1" {
 		t.Fatalf("org = %#v, want written org values", org)
 	}
 }
@@ -150,7 +151,9 @@ region = "us-west-1"
 		t.Fatalf("Init() error = %v", err)
 	}
 	org := GetInstance().Orgs["dev"]
-	if org.URL != "https://new.awsapps.com/start" || org.Prefix != "new" || org.EffectiveSSORegion() != "us-east-1" || org.EffectiveDefaultRegion() != "us-west-2" {
+	if org.URL != "https://new.awsapps.com/start" || org.Prefix != "new" ||
+		org.EffectiveSSORegion() != "us-east-1" ||
+		org.EffectiveDefaultRegion() != "us-west-2" {
 		t.Fatalf("org = %#v, want updated org", org)
 	}
 }

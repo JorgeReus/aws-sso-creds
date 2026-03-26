@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -9,9 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bigkevmcd/go-configparser"
+	configparser "github.com/bigkevmcd/go-configparser"
 	mapset "github.com/deckarep/golang-set"
-	"github.com/ktr0731/go-fuzzyfinder"
+	fuzzyfinder "github.com/ktr0731/go-fuzzyfinder"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const (
@@ -42,24 +43,30 @@ func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewe
 	if _, err = os.Stat(credentialsPath); err == nil {
 		creds, err = configparser.NewConfigParserFromFile(credentialsPath)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Cannot parse file %s: %v", credentialsPath, err))
+			return nil, fmt.Errorf("cannot parse file %s: %w", credentialsPath, err)
 		}
 
 		// Go though the sections of the credentials file (~/.aws/credentials)
 		for _, sec := range creds.Sections() {
 			err := entries.AddSection(sec)
 			if err != nil {
-				return nil, errors.New(fmt.Sprintf("Cannot add section %s: %v", sec, err))
+				return nil, fmt.Errorf("cannot add section %s: %w", sec, err)
 			}
 			extraSections.Add(sec)
 			items, err := creds.Items(sec)
 			if err != nil {
-				return nil, errors.New(fmt.Sprintf("Cannot get the %s entries from the credentials file (~/.aws/credentials): %v", sec, err))
+				return nil, fmt.Errorf(
+					"cannot get the %s entries from the credentials file (~/.aws/credentials): %w",
+					sec,
+					err,
+				)
 			}
 
 			rolesMapping[sec] = sec
 			for k, v := range items {
-				entries.Set(sec, k, v)
+				if err := entries.Set(sec, k, v); err != nil {
+					return nil, fmt.Errorf("cannot set %s.%s: %w", sec, k, err)
+				}
 			}
 		}
 	}
@@ -69,7 +76,7 @@ func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewe
 	if _, err = os.Stat(rolesPath); err == nil {
 		roles, err = configparser.NewConfigParserFromFile(rolesPath)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Cannot parse file %s: %v", rolesPath, err))
+			return nil, fmt.Errorf("cannot parse file %s: %w", rolesPath, err)
 		}
 
 		// Go though the sections of the config file (~/.aws/config)
@@ -82,7 +89,11 @@ func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewe
 					extraItems, _ = entries.Items(profileName)
 					err = entries.RemoveSection(profileName)
 					if err != nil {
-						return nil, errors.New(fmt.Sprintf("Cannot erase section %s from configFile: %v", profileName, err))
+						return nil, fmt.Errorf(
+							"cannot erase section %s from configFile: %w",
+							profileName,
+							err,
+						)
 					}
 					extraSections.Remove(profileName)
 				}
@@ -94,22 +105,28 @@ func NewFuzzyPreviewer(credentialsPath string, rolesPath string) (*FuzzyPreviewe
 			rolesMapping[outputName] = sec
 
 			outputSections = append(outputSections, outputName)
-			entries.AddSection(sec)
+			if err := entries.AddSection(sec); err != nil {
+				return nil, fmt.Errorf("cannot add section %s: %w", sec, err)
+			}
 
 			items, _ := roles.Items(sec)
 			for k, v := range items {
-				entries.Set(sec, k, v)
+				if err := entries.Set(sec, k, v); err != nil {
+					return nil, fmt.Errorf("cannot set %s.%s: %w", sec, k, err)
+				}
 			}
 
 			for k, v := range extraItems {
-				entries.Set(sec, k, v)
+				if err := entries.Set(sec, k, v); err != nil {
+					return nil, fmt.Errorf("cannot set %s.%s: %w", sec, k, err)
+				}
 			}
 		}
 
 	}
 
 	if roles == nil && creds == nil {
-		return nil, fmt.Errorf("Neither %s nor %s exist, nothing to do", credentialsPath, rolesPath)
+		return nil, fmt.Errorf("neither %s nor %s exist, nothing to do", credentialsPath, rolesPath)
 	}
 
 	for sec := range extraSections.Iter() {
@@ -126,6 +143,7 @@ func (fp *FuzzyPreviewer) generatePreviewAttrs(selected string) (*string, error)
 	s := fmt.Sprintf("[%s]\n", (*fp.rolesMapping)[selected])
 	items, _ := fp.entries.Items((*fp.rolesMapping)[selected])
 	keys := sort.StringSlice(items.Keys())
+	titleCaser := cases.Title(language.English)
 	for _, k := range keys {
 		v := items[k]
 		switch k {
@@ -134,29 +152,31 @@ func (fp *FuzzyPreviewer) generatePreviewAttrs(selected string) (*string, error)
 		case "expires_time":
 			exp, err := strconv.Atoi(v)
 			if err != nil {
-				s += fmt.Sprintln(fmt.Sprintf("Cannot parse: %s", k))
+				s += fmt.Sprintf("Cannot parse: %s\n", k)
+				continue
 			}
 			expiresAt := time.Unix(int64(exp), 0)
-			s += fmt.Sprintln(fmt.Sprintf("Expires Time: %s", expiresAt.String()))
+			s += fmt.Sprintf("Expires Time: %s\n", expiresAt.String())
 			var expiredTxt string
 			if expiresAt.Before(time.Now()) {
 				expiredTxt = EXPIRED_TEXT
 			} else {
 				expiredTxt = VALID_TEXT
 			}
-			s += fmt.Sprintln(fmt.Sprintf("Status: %s", expiredTxt))
-			break
+			s += fmt.Sprintf("Status: %s\n", expiredTxt)
+			continue
 		case "issued_time":
 			iss, err := strconv.Atoi(v)
 			if err != nil {
-				s += fmt.Sprintln(fmt.Sprintf("Cannot parse %s", k))
+				s += fmt.Sprintf("Cannot parse %s\n", k)
+				continue
 			}
 			issuedAt := time.Unix(int64(iss), 0)
-			s += fmt.Sprintln(fmt.Sprintf("Issued Time: %s", issuedAt.String()))
-			break
+			s += fmt.Sprintf("Issued Time: %s\n", issuedAt.String())
+			continue
 		default:
-			k = strings.Title(strings.ReplaceAll(k, "_", " "))
-			s += fmt.Sprintln(fmt.Sprintf("%s: %s", k, v))
+			k = titleCaser.String(strings.ReplaceAll(k, "_", " "))
+			s += fmt.Sprintf("%s: %s\n", k, v)
 		}
 	}
 	return &s, nil
@@ -176,7 +196,7 @@ func (fp *FuzzyPreviewer) Preview() (*string, error) {
 			selected = fp.outputSections[i]
 			s, err := fp.generatePreviewAttrs(selected)
 			if err != nil {
-				return fmt.Sprintf("Cannot parse attributes from %s", selected)
+				return fmt.Sprintf("cannot parse attributes from %s", selected)
 			}
 			return *s
 		}))

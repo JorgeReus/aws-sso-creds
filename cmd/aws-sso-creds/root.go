@@ -6,17 +6,23 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/util"
-	"github.com/spf13/cobra"
 )
 
 var createStatic, populateRoles, foceLogin, noBrowser bool
+
 var configPath, home string
+
 var version = "dirty"
+
 var selectedOrg config.Organization
+
 var rootDepsFactory = defaultRootDeps
+
 var readBuildInfo = debug.ReadBuildInfo
 
 //go:embed release_version.txt
@@ -61,7 +67,7 @@ Use it to easily manage entries in ~/.aws/config & ~/.aws/credentials files, so 
 			var ok bool
 			if selectedOrg, ok = config.GetInstance().Orgs[args[0]]; !ok {
 				return fmt.Errorf(
-					"Organization '%s' not found in config file %s",
+					"organization '%s' not found in config file %s",
 					args[0],
 					configPath,
 				)
@@ -79,7 +85,9 @@ Use it to easily manage entries in ~/.aws/config & ~/.aws/credentials files, so 
 		},
 		SilenceUsage: true,
 	}
-	cmd.SetHelpTemplate(cmd.HelpTemplate() + "{{if eq .CommandPath \"aws-sso-creds\"}}\nVersion: {{buildVersion}}\n{{end}}")
+	cmd.SetHelpTemplate(
+		cmd.HelpTemplate() + "{{if eq .CommandPath \"aws-sso-creds\"}}\nVersion: {{buildVersion}}\n{{end}}",
+	)
 
 	cmd.Flags().
 		BoolVarP(&createStatic, "temp", "t", false, "Create temporary credentials in ~/.aws/credentials")
@@ -99,14 +107,14 @@ func Execute() {
 	var err error
 	home, err = rootDepsFactory().homeDir()
 	if err != nil {
-		panic(fmt.Errorf("Error getting user home dir: %s", err))
+		panic(fmt.Errorf("error getting user home dir: %w", err))
 	}
 
 	rootCmd.PersistentFlags().
 		StringVarP(&configPath, "config", "c", fmt.Sprintf("%s/.config/aws-sso-creds.toml", home), "Directory of the .toml config")
 
 	if err := rootCmd.Execute(); err != nil {
-		panic(fmt.Errorf("There was an error running aws-sso-creds '%s'", err))
+		panic(fmt.Errorf("there was an error running aws-sso-creds: %w", err))
 	}
 }
 

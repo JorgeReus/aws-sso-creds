@@ -8,7 +8,7 @@ import (
 	pathpkg "path/filepath"
 	"strconv"
 
-	"gopkg.in/ini.v1"
+	ini "gopkg.in/ini.v1"
 )
 
 func NewConfigFile(homedir string) (*AWSFile, error) {

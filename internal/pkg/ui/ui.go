@@ -8,14 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	te "github.com/muesli/termenv"
+
 	sso "github.com/JorgeReus/aws-sso-creds/internal/app"
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/files"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/util"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	te "github.com/muesli/termenv"
 )
 
 type UI struct {
@@ -48,7 +49,6 @@ type uiDeps struct {
 }
 
 var (
-	c                config.Config
 	errorColor       te.Color
 	informationColor te.Color
 	warningColor     te.Color
@@ -135,7 +135,7 @@ type model struct {
 }
 
 func initialModel() model {
-	s := spinner.NewModel()
+	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return model{spinner: s}
 }
@@ -196,7 +196,7 @@ func (m model) View() string {
 }
 
 func (m model) Init() tea.Cmd {
-	return spinner.Tick
+	return m.spinner.Tick
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -232,14 +232,14 @@ func handleBusMessage(msg bus.BusMsg, deps uiDeps) {
 		appendOutputLine(te.String(msg.Contents).Foreground(informationColor).String())
 	case bus.MSG_TYPE_ERR:
 		appendOutputLine(printWarning(msg.Contents))
-		setDisplayMsg(te.String("Continue in your browser and press ENTER").Foreground(informationColor).String())
+		setDisplayMsg(
+			te.String("Continue in your browser and press ENTER").
+				Foreground(informationColor).
+				String(),
+		)
 		needsUserApproval.Store(true)
 	default:
 	}
-}
-
-func channelSubscriber() {
-	channelSubscriberWithDeps(uiDepsFactory())
 }
 
 func channelSubscriberWithDeps(deps uiDeps) {
@@ -284,7 +284,9 @@ func handleFlowWithDeps(u UI, deps uiDeps) {
 		}
 		for _, role := range roles {
 			if role != "DEFAULT" {
-				appendOutputLine(fmt.Sprintf("  SSO Role %s", te.String(role).Foreground(focusColor).String()))
+				appendOutputLine(
+					fmt.Sprintf("  SSO Role %s", te.String(role).Foreground(focusColor).String()),
+				)
 			}
 		}
 		appendOutputLine("")

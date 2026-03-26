@@ -100,6 +100,20 @@ cd aws-sso-creds
 go build ./...
 ```
 
+### Development
+
+Run lint locally:
+
+```bash
+mise lint
+```
+
+Run tests locally:
+
+```bash
+mise test
+```
+
 ### With Nix
 
 Install from this repo:

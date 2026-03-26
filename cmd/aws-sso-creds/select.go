@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
+	fuzzyfinder "github.com/ktr0731/go-fuzzyfinder"
+	"github.com/spf13/cobra"
+
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
-	"github.com/ktr0731/go-fuzzyfinder"
-	"github.com/spf13/cobra"
 )
 
 type previewer interface {
@@ -50,7 +51,7 @@ func newSelectCmd(deps selectDeps) *cobra.Command {
 
 			fp, err := deps.newFuzzyPreviewer(credentialsPath, configFilePath)
 			if err != nil {
-				return fmt.Errorf("Error starting program: %w", err)
+				return fmt.Errorf("error starting program: %w", err)
 			}
 			selectedEntry, err := fp.Preview()
 			if err != nil {
@@ -61,10 +62,10 @@ func newSelectCmd(deps selectDeps) *cobra.Command {
 					}
 					return nil
 				}
-				return fmt.Errorf("Error selecting entry: %w", err)
+				return fmt.Errorf("error selecting entry: %w", err)
 			}
 			if selectedEntry == nil {
-				return fmt.Errorf("Error selecting entry: %w", errors.New("no profile selected"))
+				return fmt.Errorf("error selecting entry: %w", errors.New("no profile selected"))
 			}
 			_, err = deps.println(*selectedEntry)
 			return err

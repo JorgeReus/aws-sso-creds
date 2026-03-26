@@ -9,7 +9,7 @@ import (
 	"os/user"
 	"syscall"
 
-	"github.com/mitchellh/go-homedir"
+	homedir "github.com/mitchellh/go-homedir"
 )
 
 func HomeDir() (string, error) {

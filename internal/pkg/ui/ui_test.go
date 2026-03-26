@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+
 	sso "github.com/JorgeReus/aws-sso-creds/internal/app"
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/bus"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type fakeProgram struct {
@@ -46,20 +47,23 @@ func TestStartWithDepsInitializesAndRunsProgram(t *testing.T) {
 
 	prog := &fakeProgram{}
 	validateCalls := 0
-	err := startWithDeps(UI{CreateStatic: true, PopulateRoles: true, Org: config.Organization{Name: "dev"}}, uiDeps{
-		currentUser: func() (*user.User, error) { return &user.User{Uid: "1000"}, nil },
-		validateSuperuserFile: func(string, *user.User) string {
-			validateCalls++
-			return ""
+	err := startWithDeps(
+		UI{CreateStatic: true, PopulateRoles: true, Org: config.Organization{Name: "dev"}},
+		uiDeps{
+			currentUser: func() (*user.User, error) { return &user.User{Uid: "1000"}, nil },
+			validateSuperuserFile: func(string, *user.User) string {
+				validateCalls++
+				return ""
+			},
+			newProgram:         func(tea.Model) programRunner { return prog },
+			login:              func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error) { return fakeFlow{}, nil },
+			configFileSSOEmpty: func(string, string) bool { return false },
+			println:            func(...interface{}) (int, error) { return 0, nil },
+			sleep:              func(time.Duration) {},
+			startSubscriber:    func(uiDeps) {},
+			startFlow:          func(UI, uiDeps) {},
 		},
-		newProgram:         func(tea.Model) programRunner { return prog },
-		login:              func(config.Organization, bool, bool, *bus.Bus) (flowAPI, error) { return fakeFlow{}, nil },
-		configFileSSOEmpty: func(string, string) bool { return false },
-		println:            func(...interface{}) (int, error) { return 0, nil },
-		sleep:              func(time.Duration) {},
-		startSubscriber:    func(uiDeps) {},
-		startFlow:          func(UI, uiDeps) {},
-	})
+	)
 	if err != nil {
 		t.Fatalf("startWithDeps() error = %v", err)
 	}

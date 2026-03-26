@@ -93,7 +93,9 @@ region = "us-west-1"
 
 	var out bytes.Buffer
 	cmd := newInitCmd(initDeps{
-		in:        strings.NewReader("dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\nus-west-2\n"),
+		in: strings.NewReader(
+			"dev\nhttps://dev.awsapps.com/start\ndev\nus-east-1\nus-west-2\n",
+		),
 		out:       &out,
 		upsertOrg: config.UpsertOrganizationConfig,
 		fileExists: func(string) bool {
