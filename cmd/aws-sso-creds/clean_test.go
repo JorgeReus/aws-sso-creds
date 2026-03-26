@@ -69,7 +69,6 @@ func TestCleanCommandDefaultsToCleaningConfigAndCredentials(t *testing.T) {
 	defer func() { home = origHome }()
 	home = testHome
 	setupCleanConfig(t, testHome)
-	createCleanFixtureFiles(t, testHome)
 
 	cmd := newCleanCmd(cleanDeps{
 		initConfig: func(home, path string) error {
@@ -96,6 +95,7 @@ func TestCleanCommandAllowsExpiredWithConfigAndCredsScopes(t *testing.T) {
 	defer func() { home = origHome }()
 	home = testHome
 	setupCleanConfig(t, testHome)
+	createCleanFixtureFiles(t, testHome)
 	origConfigPath := configPath
 	defer func() {
 		configPath = origConfigPath

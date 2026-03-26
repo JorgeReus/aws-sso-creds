@@ -1,10 +1,13 @@
 package awsssocreds
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
 	"github.com/JorgeReus/aws-sso-creds/internal/pkg/ui"
+	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
 )
 
@@ -13,9 +16,10 @@ type previewer interface {
 }
 
 type selectDeps struct {
-	initConfig         func(home, configPath string) error
-	newFuzzyPreviewer  func(credentialsPath string, configFilePath string) (previewer, error)
-	println            func(...interface{}) (int, error)
+	initConfig        func(home, configPath string) error
+	newFuzzyPreviewer func(credentialsPath string, configFilePath string) (previewer, error)
+	println           func(...interface{}) (int, error)
+	getenv            func(string) string
 }
 
 var selectDepsFactory = defaultSelectDeps
@@ -27,6 +31,7 @@ func defaultSelectDeps() selectDeps {
 			return ui.NewFuzzyPreviewer(credentialsPath, configFilePath)
 		},
 		println: fmt.Println,
+		getenv:  os.Getenv,
 	}
 }
 
@@ -49,7 +54,17 @@ func newSelectCmd(deps selectDeps) *cobra.Command {
 			}
 			selectedEntry, err := fp.Preview()
 			if err != nil {
+				if errors.Is(err, fuzzyfinder.ErrAbort) {
+					if profile := deps.getenv("AWS_PROFILE"); profile != "" {
+						_, err = deps.println(profile)
+						return err
+					}
+					return nil
+				}
 				return fmt.Errorf("Error selecting entry: %w", err)
+			}
+			if selectedEntry == nil {
+				return fmt.Errorf("Error selecting entry: %w", errors.New("no profile selected"))
 			}
 			_, err = deps.println(*selectedEntry)
 			return err
