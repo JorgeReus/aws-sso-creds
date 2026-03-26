@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/JorgeReus/aws-sso-creds/internal/app/config"
+	"github.com/ktr0731/go-fuzzyfinder"
 )
 
 type fakePreviewer struct {
@@ -32,6 +33,7 @@ func TestSelectCommandInvokesPreviewerFlow(t *testing.T) {
 			printed = args[0].(string)
 			return 0, nil
 		},
+		getenv: func(string) string { return "" },
 	})
 
 	if err := cmd.Execute(); err != nil {
@@ -54,6 +56,7 @@ func TestSelectCommandReturnsPreviewerCreationError(t *testing.T) {
 			return nil, wantErr
 		},
 		println: func(args ...interface{}) (int, error) { return 0, nil },
+		getenv:  func(string) string { return "" },
 	})
 
 	err := cmd.Execute()
@@ -74,6 +77,7 @@ func TestSelectCommandReturnsPreviewError(t *testing.T) {
 			return fakePreviewer{err: wantErr}, nil
 		},
 		println: func(args ...interface{}) (int, error) { return 0, nil },
+		getenv:  func(string) string { return "" },
 	})
 
 	err := cmd.Execute()
@@ -82,9 +86,41 @@ func TestSelectCommandReturnsPreviewError(t *testing.T) {
 	}
 }
 
+func TestSelectCommandReturnsEnvValueOnAbort(t *testing.T) {
+	const profile = "dev:account:Admin"
+	var printed string
+	cmd := newSelectCmd(selectDeps{
+		initConfig: func(home, configPath string) error {
+			config.ResetForTest()
+			config.SetInstanceForTest(&config.Config{Home: "/tmp"})
+			return nil
+		},
+		newFuzzyPreviewer: func(credentialsPath string, configFilePath string) (previewer, error) {
+			return fakePreviewer{err: fuzzyfinder.ErrAbort}, nil
+		},
+		println: func(args ...interface{}) (int, error) {
+			printed = args[0].(string)
+			return 0, nil
+		},
+		getenv: func(key string) string {
+			if key != "AWS_PROFILE" {
+				t.Fatalf("unexpected getenv key %q", key)
+			}
+			return profile
+		},
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if printed != profile {
+		t.Fatalf("printed = %q, want %q", printed, profile)
+	}
+}
+
 func TestDefaultSelectDepsProvidesFunctions(t *testing.T) {
 	deps := defaultSelectDeps()
-	if deps.initConfig == nil || deps.newFuzzyPreviewer == nil || deps.println == nil {
+	if deps.initConfig == nil || deps.newFuzzyPreviewer == nil || deps.println == nil || deps.getenv == nil {
 		t.Fatal("defaultSelectDeps() returned nil dependency")
 	}
 }

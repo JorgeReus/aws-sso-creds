@@ -8,12 +8,57 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-func TestConfigAndCredentialsHelpersManageAutoPopulatedEntries(t *testing.T) {
+type sectionSpec struct {
+	name string
+	keys map[string]string
+}
+
+func addSections(t *testing.T, cfg *AWSFile, specs []sectionSpec) {
+	t.Helper()
+	for _, spec := range specs {
+		section, err := cfg.File.NewSection(spec.name)
+		if err != nil {
+			t.Fatalf("NewSection(%s) error = %v", spec.name, err)
+		}
+		for key, value := range spec.keys {
+			if _, err := section.NewKey(key, value); err != nil {
+				t.Fatalf("NewKey(%s=%s) error = %v", key, value, err)
+			}
+		}
+	}
+}
+
+func mustConfigFile(t *testing.T) (*AWSFile, string) {
+	t.Helper()
 	home := t.TempDir()
-	err := os.MkdirAll(filepath.Join(home, ".aws"), 0o755)
+	cfg, err := NewConfigFile(home)
 	if err != nil {
+		t.Fatalf("NewConfigFile() error = %v", err)
+	}
+	return cfg, home
+}
+
+func assertSectionState(t *testing.T, cfg *AWSFile, name string, shouldExist bool) {
+	t.Helper()
+	_, err := cfg.File.GetSection(name)
+	if shouldExist && err != nil {
+		t.Fatalf("expected section %q to exist: %v", name, err)
+	}
+	if !shouldExist && err == nil {
+		t.Fatalf("expected section %q to be removed", name)
+	}
+}
+
+func ensureDir(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
+}
+
+func TestConfigAndCredentialsHelpersManageAutoPopulatedEntries(t *testing.T) {
+	home := t.TempDir()
+	ensureDir(t, filepath.Join(home, ".aws"))
 
 	configFile, err := NewConfigFile(home)
 	if err != nil {
@@ -31,306 +76,339 @@ func TestConfigAndCredentialsHelpersManageAutoPopulatedEntries(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	if ConfigFileSSOEmpty(home, "dev") {
-		t.Fatal("ConfigFileSSOEmpty() = true, want false")
+	cases := []struct {
+		name string
+		run  func(t *testing.T) bool
+		want bool
+	}{
+		{
+			name: "before cleanup",
+			run: func(t *testing.T) bool {
+				return ConfigFileSSOEmpty(home, "dev")
+			},
+			want: false,
+		},
+		{
+			name: "after cleanup",
+			run: func(t *testing.T) bool {
+				configFile.CleanTemporaryRoles("dev")
+				if err := configFile.Save(); err != nil {
+					t.Fatalf("Save() after cleanup error = %v", err)
+				}
+				return ConfigFileSSOEmpty(home, "dev")
+			},
+			want: true,
+		},
 	}
 
-	configFile.CleanTemporaryRoles("dev")
-	if err := configFile.Save(); err != nil {
-		t.Fatalf("Save() after cleanup error = %v", err)
-	}
-	if !ConfigFileSSOEmpty(home, "dev") {
-		t.Fatal("ConfigFileSSOEmpty() = false, want true after cleanup")
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.run(t); got != tt.want {
+				t.Fatalf("ConfigFileSSOEmpty() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestGetentryByAWSProfileReturnsExpectedSection(t *testing.T) {
-	home := t.TempDir()
-	err := os.MkdirAll(filepath.Join(home, ".aws"), 0o755)
-	if err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
+func TestGetentryByAWSProfile(t *testing.T) {
+	tests := []struct {
+		name     string
+		profile  string
+		setup    func(*AWSFile) error
+		wantName string
+		wantErr  bool
+	}{
+		{
+			name:    "returns expected section",
+			profile: "dev:account:Admin",
+			setup: func(cfg *AWSFile) error {
+				if _, err := cfg.File.NewSection("profile dev:account:Admin"); err != nil {
+					return err
+				}
+				return nil
+			},
+			wantName: "profile dev:account:Admin",
+		},
+		{
+			name:    "errors when section missing",
+			profile: "missing",
+			wantErr: true,
+		},
 	}
 
-	configFile, err := NewConfigFile(home)
-	if err != nil {
-		t.Fatalf("NewConfigFile() error = %v", err)
-	}
-	_, err = configFile.File.NewSection("profile dev:account:Admin")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _ := mustConfigFile(t)
+			if tt.setup != nil {
+				if err := tt.setup(cfg); err != nil {
+					t.Fatalf("setup error = %v", err)
+				}
+			}
 
-	section, err := configFile.GetentryByAWSProfile("dev:account:Admin")
-	if err != nil {
-		t.Fatalf("GetentryByAWSProfile() error = %v", err)
-	}
-	if section.Name() != "profile dev:account:Admin" {
-		t.Fatalf("section.Name() = %q, want %q", section.Name(), "profile dev:account:Admin")
+			section, err := cfg.GetentryByAWSProfile(tt.profile)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("GetentryByAWSProfile() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetentryByAWSProfile() error = %v", err)
+			}
+			if section.Name() != tt.wantName {
+				t.Fatalf("section.Name() = %q, want %q", section.Name(), tt.wantName)
+			}
+		})
 	}
 }
 
-func TestNewCredentialsFileCreatesCredentialsPath(t *testing.T) {
-	home := t.TempDir()
-	err := os.MkdirAll(filepath.Join(home, ".aws"), 0o755)
-	if err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
+func TestNewAWSFileCreation(t *testing.T) {
+	tests := []struct {
+		name    string
+		create  func(string) (string, error)
+		wantRel string
+	}{
+		{
+			name: "config file creates aws directory",
+			create: func(home string) (string, error) {
+				cfg, err := NewConfigFile(home)
+				if err != nil {
+					return "", err
+				}
+				return cfg.Path, nil
+			},
+			wantRel: filepath.Join(".aws", "config"),
+		},
+		{
+			name: "credentials file returns expected path",
+			create: func(home string) (string, error) {
+				cfg, err := NewCredentialsFile(home)
+				if err != nil {
+					return "", err
+				}
+				return cfg.Path, nil
+			},
+			wantRel: filepath.Join(".aws", "credentials"),
+		},
 	}
 
-	credentialsFile, err := NewCredentialsFile(home)
-	if err != nil {
-		t.Fatalf("NewCredentialsFile() error = %v", err)
-	}
-	if credentialsFile.Path != filepath.Join(home, ".aws", "credentials") {
-		t.Fatalf("Path = %q, want %q", credentialsFile.Path, filepath.Join(home, ".aws", "credentials"))
-	}
-	if _, err := os.Stat(credentialsFile.Path); err != nil {
-		t.Fatalf("credentials file stat error = %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			path, err := tt.create(home)
+			if err != nil {
+				t.Fatalf("create error = %v", err)
+			}
+			want := filepath.Join(home, tt.wantRel)
+			if path != want {
+				t.Fatalf("Path = %q, want %q", path, want)
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("file stat error = %v", err)
+			}
+		})
 	}
 }
 
-func TestNewConfigFileCreatesAWSDirectoryWhenMissing(t *testing.T) {
-	home := t.TempDir()
-
-	configFile, err := NewConfigFile(home)
-	if err != nil {
-		t.Fatalf("NewConfigFile() error = %v", err)
-	}
-	if configFile.Path != filepath.Join(home, ".aws", "config") {
-		t.Fatalf("Path = %q, want %q", configFile.Path, filepath.Join(home, ".aws", "config"))
-	}
-	if _, err := os.Stat(configFile.Path); err != nil {
-		t.Fatalf("config file stat error = %v", err)
-	}
-}
-
-func TestNewCredentialsFileCreatesAWSDirectoryWhenMissing(t *testing.T) {
-	home := t.TempDir()
-
-	credentialsFile, err := NewCredentialsFile(home)
-	if err != nil {
-		t.Fatalf("NewCredentialsFile() error = %v", err)
-	}
-	if credentialsFile.Path != filepath.Join(home, ".aws", "credentials") {
-		t.Fatalf("Path = %q, want %q", credentialsFile.Path, filepath.Join(home, ".aws", "credentials"))
-	}
-	if _, err := os.Stat(credentialsFile.Path); err != nil {
-		t.Fatalf("credentials file stat error = %v", err)
-	}
-}
-
-func TestConfigFileSSOEmptyReturnsTrueForInvalidConfig(t *testing.T) {
-	home := t.TempDir()
-	awsDir := filepath.Join(home, ".aws")
-	if err := os.MkdirAll(awsDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	configPath := filepath.Join(awsDir, "config")
-	if err := os.WriteFile(configPath, []byte("[profile broken\norg=dev\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+func TestConfigFileSSOEmptyReturnsTrueForInvalidConfigs(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+	}{
+		{
+			name:     "missing section bracket",
+			contents: "[profile broken\norg=dev\n",
+		},
+		{
+			name:     "malformed key",
+			contents: "[profile broken]\norg",
+		},
 	}
 
-	if !ConfigFileSSOEmpty(home, "dev") {
-		t.Fatal("ConfigFileSSOEmpty() = false, want true for invalid config")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			awsDir := filepath.Join(home, ".aws")
+			ensureDir(t, awsDir)
+			configPath := filepath.Join(awsDir, "config")
+			if err := os.WriteFile(configPath, []byte(tt.contents), 0o644); err != nil {
+				t.Fatalf("WriteFile() error = %v", err)
+			}
+			if !ConfigFileSSOEmpty(home, "dev") {
+				t.Fatal("ConfigFileSSOEmpty() = false, want true for invalid config")
+			}
+		})
 	}
 }
 
 func TestIsValidEntryRequiresOrganizationAndAutoPopulatedKey(t *testing.T) {
-	file := ini.Empty()
-	withOrg, err := file.NewSection("profile dev")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = withOrg.NewKey("org", "dev")
-	_, _ = withOrg.NewKey("sso_auto_populated", "true")
-	if !IsValidEntry(withOrg, "dev") {
-		t.Fatal("IsValidEntry() = false, want true")
-	}
-	if IsValidEntry(withOrg, "prod") {
-		t.Fatal("IsValidEntry() = true, want false for mismatched org")
+	tests := []struct {
+		name        string
+		sectionName string
+		keys        map[string]string
+		profile     string
+		want        bool
+	}{
+		{
+			name:        "valid entry",
+			sectionName: "profile dev",
+			keys: map[string]string{
+				"org":                "dev",
+				"sso_auto_populated": "true",
+			},
+			profile: "dev",
+			want:    true,
+		},
+		{
+			name:        "mismatched organization",
+			sectionName: "profile mismatched",
+			keys: map[string]string{
+				"org":                "dev",
+				"sso_auto_populated": "true",
+			},
+			profile: "prod",
+			want:    false,
+		},
+		{
+			name:        "missing auto-populated",
+			sectionName: "profile no-auto",
+			keys: map[string]string{
+				"org": "dev",
+			},
+			profile: "dev",
+			want:    false,
+		},
+		{
+			name:        "missing organization",
+			sectionName: "profile no-org",
+			keys: map[string]string{
+				"sso_auto_populated": "true",
+			},
+			profile: "dev",
+			want:    false,
+		},
 	}
 
-	missingAuto, err := file.NewSection("profile no-auto")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = missingAuto.NewKey("org", "dev")
-	if IsValidEntry(missingAuto, "dev") {
-		t.Fatal("IsValidEntry() = true, want false without sso_auto_populated")
-	}
-
-	missingOrg, err := file.NewSection("profile no-org")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = missingOrg.NewKey("sso_auto_populated", "true")
-	if IsValidEntry(missingOrg, "dev") {
-		t.Fatal("IsValidEntry() = true, want false without org")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := ini.Empty()
+			section, err := file.NewSection(tt.sectionName)
+			if err != nil {
+				t.Fatalf("NewSection() error = %v", err)
+			}
+			for key, value := range tt.keys {
+				if _, err := section.NewKey(key, value); err != nil {
+					t.Fatalf("NewKey(%s=%s) error = %v", key, value, err)
+				}
+			}
+			if got := IsValidEntry(section, tt.profile); got != tt.want {
+				t.Fatalf("IsValidEntry() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestGetentryByAWSProfileReturnsErrorForMissingSection(t *testing.T) {
-	home := t.TempDir()
-	configFile, err := NewConfigFile(home)
-	if err != nil {
-		t.Fatalf("NewConfigFile() error = %v", err)
+func TestCleanTemporaryRoles(t *testing.T) {
+	tests := []struct {
+		name      string
+		org       string
+		sections  []sectionSpec
+		wantState map[string]bool
+	}{
+		{
+			name: "removes matching organization entries",
+			org:  "dev",
+			sections: []sectionSpec{
+				{name: "profile keep-other-org", keys: map[string]string{"org": "prod", "sso_auto_populated": "true"}},
+				{name: "profile keep-manual", keys: map[string]string{"org": "dev"}},
+				{name: "profile remove-match", keys: map[string]string{"org": "dev", "sso_auto_populated": "true"}},
+			},
+			wantState: map[string]bool{
+				"profile keep-other-org": true,
+				"profile keep-manual":    true,
+				"profile remove-match":   false,
+			},
+		},
+		{
+			name: "removes all auto-populated entries",
+			org:  "",
+			sections: []sectionSpec{
+				{name: "profile keep-manual", keys: map[string]string{"org": "dev"}},
+				{name: "profile remove-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true"}},
+				{name: "profile remove-prod", keys: map[string]string{"org": "prod", "sso_auto_populated": "true"}},
+			},
+			wantState: map[string]bool{
+				"profile keep-manual": true,
+				"profile remove-dev":  false,
+				"profile remove-prod": false,
+			},
+		},
 	}
 
-	if _, err := configFile.GetentryByAWSProfile("missing"); err == nil {
-		t.Fatal("GetentryByAWSProfile() error = nil, want error")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _ := mustConfigFile(t)
+			addSections(t, cfg, tt.sections)
+			cfg.CleanTemporaryRoles(tt.org)
+			for sectionName, shouldExist := range tt.wantState {
+				assertSectionState(t, cfg, sectionName, shouldExist)
+			}
+		})
 	}
 }
 
-func TestCleanTemporaryRolesRemovesOnlyMatchingOrganization(t *testing.T) {
-	home := t.TempDir()
-	configFile, err := NewConfigFile(home)
-	if err != nil {
-		t.Fatalf("NewConfigFile() error = %v", err)
+func TestCleanExpiredCredentials(t *testing.T) {
+	tests := []struct {
+		name      string
+		org       string
+		cutoff    int64
+		sections  []sectionSpec
+		wantState map[string]bool
+	}{
+		{
+			name:   "removes only expired matching sections",
+			org:    "dev",
+			cutoff: 150,
+			sections: []sectionSpec{
+				{name: "profile expired-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "100"}},
+				{name: "profile active-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "200"}},
+				{name: "profile expired-prod", keys: map[string]string{"org": "prod", "sso_auto_populated": "true", "expires_time": "50"}},
+				{name: "profile manual-expired", keys: map[string]string{"org": "dev", "expires_time": "25"}},
+				{name: "profile invalid-expiration", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "bad"}},
+				{name: "profile missing-expiration", keys: map[string]string{"org": "dev", "sso_auto_populated": "true"}},
+			},
+			wantState: map[string]bool{
+				"profile expired-dev":        false,
+				"profile active-dev":         true,
+				"profile expired-prod":       true,
+				"profile manual-expired":     true,
+				"profile invalid-expiration": true,
+				"profile missing-expiration": true,
+			},
+		},
+		{
+			name:   "keeps entries when cutoff before expiration",
+			org:    "dev",
+			cutoff: 50,
+			sections: []sectionSpec{
+				{name: "profile future-dev", keys: map[string]string{"org": "dev", "sso_auto_populated": "true", "expires_time": "500"}},
+				{name: "profile future-prod", keys: map[string]string{"org": "prod", "sso_auto_populated": "true", "expires_time": "500"}},
+			},
+			wantState: map[string]bool{
+				"profile future-dev":  true,
+				"profile future-prod": true,
+			},
+		},
 	}
 
-	keepOtherOrg, err := configFile.File.NewSection("profile keep-other-org")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = keepOtherOrg.NewKey("org", "prod")
-	_, _ = keepOtherOrg.NewKey("sso_auto_populated", "true")
-
-	keepManual, err := configFile.File.NewSection("profile keep-manual")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = keepManual.NewKey("org", "dev")
-
-	removeMatch, err := configFile.File.NewSection("profile remove-match")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = removeMatch.NewKey("org", "dev")
-	_, _ = removeMatch.NewKey("sso_auto_populated", "true")
-
-	configFile.CleanTemporaryRoles("dev")
-
-	if _, err := configFile.File.GetSection("profile remove-match"); err == nil {
-		t.Fatal("matched auto-populated section was not removed")
-	}
-	if _, err := configFile.File.GetSection("profile keep-other-org"); err != nil {
-		t.Fatal("non-matching org section was removed")
-	}
-	if _, err := configFile.File.GetSection("profile keep-manual"); err != nil {
-		t.Fatal("manual section was removed")
-	}
-}
-
-func TestCleanTemporaryRolesAllOrganizationsRemovesOnlyAutoPopulatedSections(t *testing.T) {
-	home := t.TempDir()
-	configFile, err := NewConfigFile(home)
-	if err != nil {
-		t.Fatalf("NewConfigFile() error = %v", err)
-	}
-
-	keepManual, err := configFile.File.NewSection("profile keep-manual")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = keepManual.NewKey("org", "dev")
-
-	removeDev, err := configFile.File.NewSection("profile remove-dev")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = removeDev.NewKey("org", "dev")
-	_, _ = removeDev.NewKey("sso_auto_populated", "true")
-
-	removeProd, err := configFile.File.NewSection("profile remove-prod")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = removeProd.NewKey("org", "prod")
-	_, _ = removeProd.NewKey("sso_auto_populated", "true")
-
-	configFile.CleanTemporaryRoles("")
-
-	if _, err := configFile.File.GetSection("profile remove-dev"); err == nil {
-		t.Fatal("dev auto-populated section was not removed")
-	}
-	if _, err := configFile.File.GetSection("profile remove-prod"); err == nil {
-		t.Fatal("prod auto-populated section was not removed")
-	}
-	if _, err := configFile.File.GetSection("profile keep-manual"); err != nil {
-		t.Fatal("manual section was removed")
-	}
-}
-
-func TestCleanExpiredCredentialsRemovesOnlyExpiredMatchingSections(t *testing.T) {
-	home := t.TempDir()
-	configFile, err := NewConfigFile(home)
-	if err != nil {
-		t.Fatalf("NewConfigFile() error = %v", err)
-	}
-
-	expiredDev, err := configFile.File.NewSection("profile expired-dev")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = expiredDev.NewKey("org", "dev")
-	_, _ = expiredDev.NewKey("sso_auto_populated", "true")
-	_, _ = expiredDev.NewKey("expires_time", "100")
-
-	activeDev, err := configFile.File.NewSection("profile active-dev")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = activeDev.NewKey("org", "dev")
-	_, _ = activeDev.NewKey("sso_auto_populated", "true")
-	_, _ = activeDev.NewKey("expires_time", "200")
-
-	otherOrgExpired, err := configFile.File.NewSection("profile expired-prod")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = otherOrgExpired.NewKey("org", "prod")
-	_, _ = otherOrgExpired.NewKey("sso_auto_populated", "true")
-	_, _ = otherOrgExpired.NewKey("expires_time", "50")
-
-	manualExpired, err := configFile.File.NewSection("profile manual-expired")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = manualExpired.NewKey("org", "dev")
-	_, _ = manualExpired.NewKey("expires_time", "25")
-
-	invalidExpiration, err := configFile.File.NewSection("profile invalid-expiration")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = invalidExpiration.NewKey("org", "dev")
-	_, _ = invalidExpiration.NewKey("sso_auto_populated", "true")
-	_, _ = invalidExpiration.NewKey("expires_time", "bad")
-
-	missingExpiration, err := configFile.File.NewSection("profile missing-expiration")
-	if err != nil {
-		t.Fatalf("NewSection() error = %v", err)
-	}
-	_, _ = missingExpiration.NewKey("org", "dev")
-	_, _ = missingExpiration.NewKey("sso_auto_populated", "true")
-
-	configFile.CleanExpiredCredentials("dev", 150)
-
-	if _, err := configFile.File.GetSection("profile expired-dev"); err == nil {
-		t.Fatal("expired matching section was not removed")
-	}
-	if _, err := configFile.File.GetSection("profile active-dev"); err != nil {
-		t.Fatal("active matching section was removed")
-	}
-	if _, err := configFile.File.GetSection("profile expired-prod"); err != nil {
-		t.Fatal("other-org section was removed")
-	}
-	if _, err := configFile.File.GetSection("profile manual-expired"); err != nil {
-		t.Fatal("manual section was removed")
-	}
-	if _, err := configFile.File.GetSection("profile invalid-expiration"); err != nil {
-		t.Fatal("invalid-expiration section was removed")
-	}
-	if _, err := configFile.File.GetSection("profile missing-expiration"); err != nil {
-		t.Fatal("missing-expiration section was removed")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _ := mustConfigFile(t)
+			addSections(t, cfg, tt.sections)
+			cfg.CleanExpiredCredentials(tt.org, tt.cutoff)
+			for sectionName, shouldExist := range tt.wantState {
+				assertSectionState(t, cfg, sectionName, shouldExist)
+			}
+		})
 	}
 }
