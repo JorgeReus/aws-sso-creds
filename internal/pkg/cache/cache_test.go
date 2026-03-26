@@ -24,60 +24,124 @@ func (f *fakeValidatorClient) ListAccounts(
 	return f.listAccountsFn(ctx, input, optFns...)
 }
 
-func TestGetSSOClientCredsReturnsSavedCredentials(t *testing.T) {
-	setCacheDirForTest(t.TempDir())
+func TestGetSSOClientCreds(t *testing.T) {
+	tests := []struct {
+		name         string
+		setup        func(t *testing.T) (string, string)
+		wantClientID string
+		wantNil      bool
+		wantErr      bool
+		wantTrunc    bool
+	}{
+		{
+			name: "saved credentials",
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				cacheDir := t.TempDir()
+				setCacheDirForTest(cacheDir)
+				region := "us-east-1"
+				creds := &SSOClientCredentials{
+					ClientId:     "id",
+					ClientSecret: "secret",
+					ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+				}
+				if err := creds.Save(&region); err != nil {
+					t.Fatalf("Save() error = %v", err)
+				}
+				return region, cacheDir
+			},
+			wantClientID: "id",
+		},
+		{
+			name: "expired credentials",
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				cacheDir := t.TempDir()
+				setCacheDirForTest(cacheDir)
+				region := "us-east-1"
+				creds := &SSOClientCredentials{
+					ClientId:     "id",
+					ClientSecret: "secret",
+					ExpiresAt:    time.Now().Add(-time.Hour).Format(time.RFC3339),
+				}
+				if err := creds.Save(&region); err != nil {
+					t.Fatalf("Save() error = %v", err)
+				}
+				return region, cacheDir
+			},
+			wantTrunc: true,
+			wantNil:   true,
+		},
+		{
+			name: "empty cache file",
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				cacheDir := t.TempDir()
+				setCacheDirForTest(cacheDir)
+				return "us-east-1", cacheDir
+			},
+			wantNil: true,
+		},
+		{
+			name: "bad timestamp",
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				cacheDir := t.TempDir()
+				setCacheDirForTest(cacheDir)
+				region := "us-east-1"
+				creds := &SSOClientCredentials{
+					ClientId:     "id",
+					ClientSecret: "secret",
+					ExpiresAt:    "definitely-not-a-time",
+				}
+				if err := creds.Save(&region); err != nil {
+					t.Fatalf("Save() error = %v", err)
+				}
+				return region, cacheDir
+			},
+			wantErr: true,
+		},
+	}
 
-	region := "us-east-1"
-	creds := &SSOClientCredentials{
-		ClientId:     "id",
-		ClientSecret: "secret",
-		ExpiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
-	}
-	if err := creds.Save(&region); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			region, cacheDir := tt.setup(t)
+			got, err := GetSSOClientCreds(region)
 
-	got, err := GetSSOClientCreds(region)
-	if err != nil {
-		t.Fatalf("GetSSOClientCreds() error = %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetSSOClientCreds() = nil, want credentials")
-	}
-	if got.ClientId != "id" {
-		t.Fatalf("GetSSOClientCreds().ClientId = %q, want %q", got.ClientId, "id")
-	}
-}
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("GetSSOClientCreds() = %#v, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetSSOClientCreds() error = %v", err)
+			}
 
-func TestGetSSOClientCredsReturnsNilForExpiredCredentials(t *testing.T) {
-	cacheDir := t.TempDir()
-	setCacheDirForTest(cacheDir)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("GetSSOClientCreds() = %#v, want nil", got)
+				}
+			} else {
+				if got == nil {
+					t.Fatal("GetSSOClientCreds() = nil, want credentials")
+				}
+				if got.ClientId != tt.wantClientID {
+					t.Fatalf("GetSSOClientCreds().ClientId = %q, want %q", got.ClientId, tt.wantClientID)
+				}
+			}
 
-	region := "us-east-1"
-	creds := &SSOClientCredentials{
-		ClientId:     "id",
-		ClientSecret: "secret",
-		ExpiresAt:    time.Now().Add(-time.Hour).Format(time.RFC3339),
-	}
-	if err := creds.Save(&region); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	got, err := GetSSOClientCreds(region)
-	if err != nil {
-		t.Fatalf("GetSSOClientCreds() error = %v", err)
-	}
-	if got != nil {
-		t.Fatalf("GetSSOClientCreds() = %#v, want nil", got)
-	}
-
-	path := filepath.Join(cacheDir, "botocore-client-id-"+region+".json")
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("Stat() error = %v", err)
-	}
-	if info.Size() != 0 {
-		t.Fatalf("expired cache file size = %d, want 0", info.Size())
+			if tt.wantTrunc {
+				path := filepath.Join(cacheDir, "botocore-client-id-"+region+".json")
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Fatalf("Stat() error = %v", err)
+				}
+				if info.Size() != 0 {
+					t.Fatalf("expired cache file size = %d, want 0", info.Size())
+				}
+			}
+		})
 	}
 }
 
@@ -131,18 +195,6 @@ func TestGetSSOTokenReturnsNilWhenValidationFails(t *testing.T) {
 	}
 }
 
-func TestGetSSOClientCredsReturnsNilForEmptyCacheFile(t *testing.T) {
-	setCacheDirForTest(t.TempDir())
-
-	got, err := GetSSOClientCreds("us-east-1")
-	if err != nil {
-		t.Fatalf("GetSSOClientCreds() error = %v", err)
-	}
-	if got != nil {
-		t.Fatalf("GetSSOClientCreds() = %#v, want nil", got)
-	}
-}
-
 func TestGetSSOTokenParsesLegacyTimestampFormat(t *testing.T) {
 	origValidate := validateToken
 	defer func() { validateToken = origValidate }()
@@ -165,25 +217,6 @@ func TestGetSSOTokenParsesLegacyTimestampFormat(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("GetSSOToken() = nil, want token")
-	}
-}
-
-func TestGetSSOClientCredsReturnsParseErrorForBadTimestamp(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDirForTest(dir)
-	region := "us-east-1"
-	creds := &SSOClientCredentials{
-		ClientId:     "id",
-		ClientSecret: "secret",
-		ExpiresAt:    "definitely-not-a-time",
-	}
-	if err := creds.Save(&region); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	got, err := GetSSOClientCreds(region)
-	if err == nil {
-		t.Fatalf("GetSSOClientCreds() = %#v, want parse error", got)
 	}
 }
 
