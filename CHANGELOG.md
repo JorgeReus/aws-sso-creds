@@ -1,4 +1,16 @@
 <a name="unreleased"></a>
+## [1.4.0](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.5...1.4.0) (2026-03-26)
+
+
+### Features
+
+* implemented clean subcommand ([6d7e44b](https://github.com/JorgeReus/aws-sso-creds/commit/6d7e44b904cc637def25dae587653f3f1b2aa6a8))
+
+
+### Bug Fixes
+
+* fixed the select abort behaviour ([da773e4](https://github.com/JorgeReus/aws-sso-creds/commit/da773e4dea395c9d9c26c0119a957332ae76aaa1))
+
 ## [1.3.5](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.4...1.3.5) (2026-03-21)
 
 
