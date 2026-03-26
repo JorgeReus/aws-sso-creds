@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	pathpkg "path/filepath"
+	"strconv"
 
 	"gopkg.in/ini.v1"
 )
@@ -58,7 +59,7 @@ func IsValidEntry(s *ini.Section, organization string) bool {
 	if err != nil {
 		return false
 	}
-	if s.HasKey("sso_auto_populated") && org.String() == organization {
+	if s.HasKey("sso_auto_populated") && (organization == "" || org.String() == organization) {
 		return true
 	}
 
@@ -100,9 +101,36 @@ func (f *AWSFile) Save() error {
 }
 
 func (c *AWSFile) CleanTemporaryRoles(organization string) {
+	sections := make([]string, 0)
 	for _, section := range c.File.Sections() {
 		if IsValidEntry(section, organization) {
-			c.File.DeleteSection(section.Name())
+			sections = append(sections, section.Name())
 		}
+	}
+	for _, section := range sections {
+		c.File.DeleteSection(section)
+	}
+}
+
+func (c *AWSFile) CleanExpiredCredentials(organization string, nowUnix int64) {
+	sections := make([]string, 0)
+	for _, section := range c.File.Sections() {
+		if !IsValidEntry(section, organization) {
+			continue
+		}
+		expiresTime, err := section.GetKey("expires_time")
+		if err != nil {
+			continue
+		}
+		expiresUnix, err := strconv.ParseInt(expiresTime.String(), 10, 64)
+		if err != nil {
+			continue
+		}
+		if expiresUnix < nowUnix {
+			sections = append(sections, section.Name())
+		}
+	}
+	for _, section := range sections {
+		c.File.DeleteSection(section)
 	}
 }
