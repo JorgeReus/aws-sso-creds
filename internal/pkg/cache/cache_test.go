@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -105,6 +107,9 @@ func TestGetSSOClientCreds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			origCacheDir := cacheDir
+			defer func() { cacheDir = origCacheDir }()
+
 			region, cacheDir := tt.setup(t)
 			got, err := GetSSOClientCreds(region)
 
@@ -145,106 +150,137 @@ func TestGetSSOClientCreds(t *testing.T) {
 	}
 }
 
-func TestGetSSOTokenReturnsSavedTokenWhenValidationSucceeds(t *testing.T) {
-	origValidate := validateToken
-	defer func() { validateToken = origValidate }()
-	validateToken = func(context.Context, string, string) error { return nil }
+func TestGetSSOToken(t *testing.T) {
+	tests := []struct {
+		name           string
+		validateErr    error
+		expiresAt      string
+		wantToken      bool
+		wantErr        bool
+		wantTruncated  bool
+		setupTokenJSON bool
+		wantValidate   bool
+	}{
+		{
+			name:         "saved token when validation succeeds",
+			expiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+			wantToken:    true,
+			wantValidate: true,
+		},
+		{
+			name:         "nil when validation fails",
+			validateErr:  errors.New("expired"),
+			expiresAt:    time.Now().Add(time.Hour).Format(time.RFC3339),
+			wantValidate: true,
+		},
+		{
+			name:         "legacy timestamp parsing",
+			expiresAt:    time.Now().UTC().Add(time.Hour).Format("2006-01-02T15:04:05UTC"),
+			wantToken:    true,
+			wantValidate: true,
+		},
+		{
+			name:          "expired token truncation",
+			expiresAt:     time.Now().Add(-time.Hour).Format(time.RFC3339),
+			wantTruncated: true,
+		},
+		{
+			name:           "invalid JSON",
+			setupTokenJSON: true,
+			wantErr:        true,
+		},
+	}
 
-	setCacheDirForTest(t.TempDir())
-	token := &SSOToken{
-		StartUrl:    "https://dev.awsapps.com/start",
-		Region:      "us-east-1",
-		AccessToken: "token",
-		ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
-	}
-	if err := token.Save(token.StartUrl); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origValidate := validateToken
+			origCacheDir := cacheDir
+			defer func() {
+				validateToken = origValidate
+				cacheDir = origCacheDir
+			}()
 
-	got, err := GetSSOToken(token.StartUrl, token.Region)
-	if err != nil {
-		t.Fatalf("GetSSOToken() error = %v", err)
-	}
-	if got == nil || got.AccessToken != "token" {
-		t.Fatalf("GetSSOToken() = %#v, want token", got)
+			testCacheDir := t.TempDir()
+			setCacheDirForTest(testCacheDir)
+
+			token := &SSOToken{
+				StartUrl:    "https://dev.awsapps.com/start",
+				Region:      "us-east-1",
+				AccessToken: "token",
+				ExpiresAt:   tt.expiresAt,
+			}
+			validateCalled := false
+			validateToken = func(context.Context, string, string) error {
+				validateCalled = true
+				return tt.validateErr
+			}
+			if tt.setupTokenJSON {
+				filePath := filepath.Join(testCacheDir, tokenCacheFileName(token.StartUrl))
+				if err := os.WriteFile(filePath, []byte("{invalid"), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+			} else if err := token.Save(token.StartUrl); err != nil {
+				t.Fatalf("Save() error = %v", err)
+			}
+
+			got, err := GetSSOToken(token.StartUrl, token.Region)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("GetSSOToken() = %#v, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetSSOToken() error = %v", err)
+			}
+
+			if tt.wantToken {
+				if got == nil || got.AccessToken != "token" {
+					t.Fatalf("GetSSOToken() = %#v, want token", got)
+				}
+			} else if got != nil {
+				t.Fatalf("GetSSOToken() = %#v, want nil", got)
+			}
+
+			if validateCalled != tt.wantValidate {
+				t.Fatalf("validateToken() called = %t, want %t", validateCalled, tt.wantValidate)
+			}
+
+			if tt.wantTruncated {
+				path := filepath.Join(testCacheDir, tokenCacheFileName(token.StartUrl))
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Fatalf("Stat() error = %v", err)
+				}
+				if info.Size() != 0 {
+					t.Fatalf("expired cache file size = %d, want 0", info.Size())
+				}
+			}
+		})
 	}
 }
 
-func TestGetSSOTokenReturnsNilWhenValidationFails(t *testing.T) {
-	origValidate := validateToken
-	defer func() { validateToken = origValidate }()
-	validateToken = func(context.Context, string, string) error { return errors.New("expired") }
-
-	setCacheDirForTest(t.TempDir())
-	token := &SSOToken{
-		StartUrl:    "https://dev.awsapps.com/start",
-		Region:      "us-east-1",
-		AccessToken: "token",
-		ExpiresAt:   time.Now().Add(time.Hour).Format(time.RFC3339),
-	}
-	if err := token.Save(token.StartUrl); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	got, err := GetSSOToken(token.StartUrl, token.Region)
-	if err != nil {
-		t.Fatalf("GetSSOToken() error = %v", err)
-	}
-	if got != nil {
-		t.Fatalf("GetSSOToken() = %#v, want nil", got)
-	}
+func tokenCacheFileName(url string) string {
+	h := sha1.New()
+	h.Write([]byte(url))
+	return hex.EncodeToString(h.Sum(nil)) + ".json"
 }
 
-func TestGetSSOTokenParsesLegacyTimestampFormat(t *testing.T) {
-	origValidate := validateToken
-	defer func() { validateToken = origValidate }()
-	validateToken = func(context.Context, string, string) error { return nil }
+func TestGetSSOClientCredsReturnsErrorForInvalidJSON(t *testing.T) {
+	origCacheDir := cacheDir
+	defer func() { cacheDir = origCacheDir }()
 
-	setCacheDirForTest(t.TempDir())
-	token := &SSOToken{
-		StartUrl:    "https://dev.awsapps.com/start",
-		Region:      "us-east-1",
-		AccessToken: "token",
-		ExpiresAt:   time.Now().UTC().Add(time.Hour).Format("2006-01-02T15:04:05UTC"),
-	}
-	if err := token.Save(token.StartUrl); err != nil {
-		t.Fatalf("Save() error = %v", err)
+	testCacheDir := t.TempDir()
+	setCacheDirForTest(testCacheDir)
+	region := "us-east-1"
+	filePath := filepath.Join(testCacheDir, "botocore-client-id-"+region+".json")
+	if err := os.WriteFile(filePath, []byte("{invalid"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := GetSSOToken(token.StartUrl, token.Region)
-	if err != nil {
-		t.Fatalf("GetSSOToken() error = %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetSSOToken() = nil, want token")
-	}
-}
-
-func TestGetSSOTokenReturnsNilForExpiredToken(t *testing.T) {
-	origValidate := validateToken
-	defer func() { validateToken = origValidate }()
-	validateToken = func(context.Context, string, string) error {
-		t.Fatal("validateToken should not run for expired token")
-		return nil
-	}
-
-	setCacheDirForTest(t.TempDir())
-	token := &SSOToken{
-		StartUrl:    "https://dev.awsapps.com/start",
-		Region:      "us-east-1",
-		AccessToken: "token",
-		ExpiresAt:   time.Now().Add(-time.Hour).Format(time.RFC3339),
-	}
-	if err := token.Save(token.StartUrl); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	got, err := GetSSOToken(token.StartUrl, token.Region)
-	if err != nil {
-		t.Fatalf("GetSSOToken() error = %v", err)
-	}
-	if got != nil {
-		t.Fatalf("GetSSOToken() = %#v, want nil", got)
+	got, err := GetSSOClientCreds(region)
+	if err == nil {
+		t.Fatalf("GetSSOClientCreds() = %#v, want error", got)
 	}
 }
 
