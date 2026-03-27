@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.4.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.0...1.4.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* fixed linting issues ([f26f0f0](https://github.com/JorgeReus/aws-sso-creds/commit/f26f0f0e0baab1dd84850d00a12f07d35f38cd90))
+
 ## [1.4.0](https://github.com/JorgeReus/aws-sso-creds/compare/1.3.5...1.4.0) (2026-03-26)
 
 
