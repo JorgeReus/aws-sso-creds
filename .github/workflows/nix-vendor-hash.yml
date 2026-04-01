@@ -23,7 +23,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v21
+        uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Attempt build and patch stale vendorHash
         id: vendor-hash
