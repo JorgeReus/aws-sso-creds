@@ -21,10 +21,11 @@ require github.com/deckarep/golang-set v1.8.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.4
-	github.com/go-playground/validator/v10 v10.30.1
+	github.com/go-playground/validator/v10 v10.30.2
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	golang.org/x/text v0.35.0
 )
 
 require (
@@ -76,5 +77,4 @@ require (
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
 )
