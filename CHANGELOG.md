@@ -1,4 +1,14 @@
 <a name="unreleased"></a>
+## [1.4.2](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.1...1.4.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* **deps:** bump github.com/go-playground/validator/v10 ([9b62845](https://github.com/JorgeReus/aws-sso-creds/commit/9b6284571a0041478f2de9725d548302c2b6b293))
+* **deps:** bump the aws-sdk group with 4 updates ([3559f73](https://github.com/JorgeReus/aws-sso-creds/commit/3559f7375d90f6cf307ef2a02afecd0e8e745a6e))
+* **nix:** fix the nix vendor hash ([adf347c](https://github.com/JorgeReus/aws-sso-creds/commit/adf347c79d8f1f95d5044bb86da235578dbce53f))
+* **nix:** fixed nix vendor hash ([9146e0b](https://github.com/JorgeReus/aws-sso-creds/commit/9146e0b7f869d965d4dc26d4ca371d5802ae7c20))
+
 ## [1.4.1](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.0...1.4.1) (2026-03-27)
 
 
