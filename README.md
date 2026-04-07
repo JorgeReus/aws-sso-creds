@@ -88,7 +88,7 @@ Release PRs keep this version updated automatically:
 
 <!-- x-release-please-start-version -->
 ```bash
-go install github.com/JorgeReus/aws-sso-creds@1.4.1
+go install github.com/JorgeReus/aws-sso-creds@1.4.2
 ```
 <!-- x-release-please-end -->
 
