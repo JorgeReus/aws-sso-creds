@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,6 +67,8 @@ func (f *fakeOIDCClient) CreateToken(
 }
 
 type fakeSSOClient struct {
+	mu sync.Mutex
+
 	listAccountsOutputs []*sso.ListAccountsOutput
 	listAccountsErr     error
 	listAccountsCalls   int
@@ -98,6 +101,9 @@ func (f *fakeSSOClient) ListAccountRoles(
 	input *sso.ListAccountRolesInput,
 	_ ...func(*sso.Options),
 ) (*sso.ListAccountRolesOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	if f.listRoleErr != nil {
 		return nil, f.listRoleErr
 	}
