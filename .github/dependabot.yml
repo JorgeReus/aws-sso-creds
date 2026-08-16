@@ -17,7 +17,12 @@ updates:
         patterns:
           - "github.com/charmbracelet/*"
           - "github.com/muesli/*"
-      spf13:
+      other:
+        patterns:
+          - "github.com/go-playground/validator/v10"
+          - "golang.org/x/text"
+          - "gopkg.in/ini.v1"
+      cobra:
         patterns:
           - "github.com/spf13/*"
 
