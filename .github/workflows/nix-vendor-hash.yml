@@ -13,7 +13,6 @@ permissions:
 jobs:
   update-vendor-hash:
     name: Update Nix vendorHash
-    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
