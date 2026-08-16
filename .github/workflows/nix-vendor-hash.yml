@@ -1,7 +1,7 @@
 name: nix-vendor-hash
 
 on:
-  pull_request:
+  pull_request_target:
     paths:
       - "go.mod"
       - "go.sum"
@@ -13,6 +13,7 @@ permissions:
 jobs:
   update-vendor-hash:
     name: Update Nix vendorHash
+    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:

@@ -25,6 +25,10 @@ updates:
       cobra:
         patterns:
           - "github.com/spf13/*"
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
