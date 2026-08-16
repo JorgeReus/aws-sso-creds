@@ -7,16 +7,19 @@ on:
       - "go.sum"
       - "flake.nix"
 
-permissions:
-  contents: write
-
 jobs:
-  update-vendor-hash:
-    name: Update Nix vendorHash
+  build:
+    name: Validate and update Nix vendorHash
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    outputs:
+      updated: ${{ steps.vendor-hash.outputs.updated }}
+      hash: ${{ steps.vendor-hash.outputs.hash }}
 
     steps:
-      - name: Checkout
+      - name: Checkout PR
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -25,11 +28,9 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
 
-      - name: Attempt build and patch stale vendorHash
+      - name: Update and validate vendorHash
         id: vendor-hash
         shell: bash
-        env:
-          CAN_PUSH: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           set -euo pipefail
 
@@ -44,58 +45,56 @@ jobs:
             exit 1
           fi
 
-          new_hash="$(sed -n 's/.*got:[[:space:]]*\\(sha256-[A-Za-z0-9+/=]*\\).*/\\1/p' "$build_log" | head -n1)"
+          new_hash="$(sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+/=]*\).*/\1/p' "$build_log" | head -n1)"
           if [[ -z "$new_hash" ]]; then
             cat "$build_log"
             exit 1
           fi
 
-          current_hash="$(sed -n 's/.*vendorHash = \"\\([^\"]*\\)\";.*/\\1/p' flake.nix | head -n1)"
-          if [[ "$current_hash" == "$new_hash" ]]; then
-            echo "updated=false" >>"$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           sed -i "s|vendorHash = \".*\";|vendorHash = \"$new_hash\";|" flake.nix
           nix build .#aws-sso-creds
 
-          if [[ "$CAN_PUSH" != "true" ]]; then
-            echo "updated=false" >>"$GITHUB_OUTPUT"
-            echo "manual_update_required=true" >>"$GITHUB_OUTPUT"
-            echo "hash=$new_hash" >>"$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           echo "updated=true" >>"$GITHUB_OUTPUT"
-          echo "manual_update_required=false" >>"$GITHUB_OUTPUT"
           echo "hash=$new_hash" >>"$GITHUB_OUTPUT"
 
-      - name: Commit updated vendorHash
+      - name: Upload corrected flake
         if: steps.vendor-hash.outputs.updated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: corrected-flake
+          path: flake.nix
+
+  push:
+    name: Push corrected vendorHash
+    needs: build
+    if: >-
+      needs.build.outputs.updated == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Download corrected flake
+        uses: actions/download-artifact@v5
+        with:
+          name: corrected-flake
+          path: corrected
+
+      - name: Commit and push vendorHash
         shell: bash
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- flake.nix; then
-            exit 0
-          fi
-
+          cp corrected/flake.nix flake.nix
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add flake.nix
           git commit -m "ci: refresh nix vendorHash"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
-
-      - name: Require manual vendorHash refresh when branch is not writable
-        if: steps.vendor-hash.outputs.manual_update_required == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "flake.nix vendorHash must be updated to ${HASH}, but this workflow cannot push to ${BRANCH}."
-          echo "This is expected for Dependabot PRs and external forks with read-only tokens."
-          echo "Please update flake.nix manually with vendorHash = \"${HASH}\"."
-          exit 1
-        env:
-          HASH: ${{ steps.vendor-hash.outputs.hash }}
-          BRANCH: ${{ github.event.pull_request.head.ref }}
