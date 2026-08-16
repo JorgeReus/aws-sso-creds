@@ -1,4 +1,14 @@
 <a name="unreleased"></a>
+## [1.4.3](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.2...1.4.3) (2026-08-16)
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/crypto ([323f937](https://github.com/JorgeReus/aws-sso-creds/commit/323f93782165755c5dde9c9e92d654dd8e2d85a0))
+* **deps:** bump the aws-sdk group across 1 directory with 4 updates ([32b8e7c](https://github.com/JorgeReus/aws-sso-creds/commit/32b8e7cb8724aff73aab29e73d7160284148a675))
+* **deps:** bump the other group across 1 directory with 3 updates ([d2d6564](https://github.com/JorgeReus/aws-sso-creds/commit/d2d65647b5292a84713e38cd488ce44929ba76d8))
+* protect fake SSO client map access ([d343f5a](https://github.com/JorgeReus/aws-sso-creds/commit/d343f5a66a6fe9ba8a1f4e369b05accc8ba4f129))
+
 ## [1.4.2](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.1...1.4.2) (2026-04-07)
 
 
