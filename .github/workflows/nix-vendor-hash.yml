@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload corrected flake
         if: steps.vendor-hash.outputs.updated == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: corrected-flake
           path: flake.nix
@@ -82,7 +82,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Download corrected flake
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: corrected-flake
           path: corrected
