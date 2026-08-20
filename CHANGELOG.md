@@ -1,4 +1,11 @@
 <a name="unreleased"></a>
+## [1.4.4](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.3...1.4.4) (2026-08-20)
+
+
+### Bug Fixes
+
+* **deps:** bump the aws-sdk group with 4 updates ([5f58b9a](https://github.com/JorgeReus/aws-sso-creds/commit/5f58b9a5d44fa05fb1358348e33bcd9c2183a8dd))
+
 ## [1.4.3](https://github.com/JorgeReus/aws-sso-creds/compare/1.4.2...1.4.3) (2026-08-16)
 
 
