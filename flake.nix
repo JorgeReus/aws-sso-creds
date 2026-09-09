@@ -44,7 +44,7 @@
             inherit version;
             src = ./.;
             subPackages = [ "." ];
-            vendorHash = "sha256-r999Ks9wMFjYRb5Bov1ANzddpqXiBuB5L7f58Hf1yTg=";
+            vendorHash = "sha256-gq9QLBD98qSHa+uu4512oZHZGvyAKcufckPiXr7nseo=";
             ldflags = [
               "-s"
               "-w"
